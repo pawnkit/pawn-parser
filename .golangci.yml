@@ -1,0 +1,102 @@
+version: "2"
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 50
+
+linters:
+  enable:
+    # correctness
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+    - errorlint
+    - nilerr
+    - forcetypeassert
+    - copyloopvar
+    - durationcheck
+    - reassign
+    # style
+    - gocritic
+    - revive
+    - whitespace
+    - godot
+    - misspell
+    - dupword
+    - predeclared
+    - errname
+    - asciicheck
+    # complexity
+    - gocyclo
+    - nestif
+    - funlen
+    - dupl
+    # performance
+    - perfsprint
+    - unconvert
+    - ineffassign
+    - goconst
+    # security
+    - gosec
+    - bidichk
+    # testing
+    - thelper
+    - usetesting
+    - paralleltest
+    # modernization & meta
+    - modernize
+    - exptostd
+    - intrange
+    - usestdlibvars
+    - exhaustive
+    - nolintlint
+
+  disable:
+    - lll        
+    - prealloc   
+    - wrapcheck  
+    - err113     
+    - mnd        
+    - varnamelen
+
+  exclusions:
+    rules:
+      - path: kind\.go|token/token\.go
+        linters: [revive, godot]
+        text: "exported const \\w+ should have comment|comment on exported const \\w+ should be of the form|Comment should end in a period"
+      - linters: [gocyclo]
+        text: "cyclomatic complexity .* of func `(singleOperatorKind|\\(\\*scanner\\)\\.(nextRaw|scanNumber)|\\(\\*parser\\)\\.parseStatement)`"
+      - linters: [nestif]
+        text: "`if p\\.at\\(token\\.Hash\\)`|`if p\\.cur\\(\\)\\.Kind == token\\.Hash`"
+
+  settings:
+    dupl:
+      threshold: 100
+    errcheck:
+      check-type-assertions: true
+    exhaustive:
+      default-signifies-exhaustive: true
+      ignore-enum-types: "directiveKeyword$"
+    funlen:
+      lines: 120
+      statements: 80
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+    gocyclo:
+      min-complexity: 20
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true

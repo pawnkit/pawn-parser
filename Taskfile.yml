@@ -1,0 +1,60 @@
+version: 3
+
+tasks:
+  build:
+    desc: Build all packages
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  fmt:
+    desc: Format code (gofmt + gofumpt)
+    cmds:
+      - golangci-lint fmt ./...
+
+  fmt-check:
+    desc: Fail if any file is not formatted
+    cmds:
+      - test -z "$(gofmt -l .)"
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  lint-fix:
+    desc: Run golangci-lint and auto-fix what it can
+    cmds:
+      - golangci-lint run --fix ./...
+
+  tidy:
+    desc: Tidy go.mod/go.sum
+    cmds:
+      - go mod tidy
+
+  check:
+    desc: Run everything CI should run (format check, vet, lint, tests)
+    cmds:
+      - task: fmt-check
+      - task: vet
+      - task: lint
+      - task: test
+
+  fuzz-lexer:
+    desc: Fuzz the lexer for 30s
+    cmds:
+      - go test ./lexer -run=^$ -fuzz=FuzzTokenize -fuzztime=30s
+
+  fuzz-parser:
+    desc: Fuzz the parser for 30s
+    cmds:
+      - go test . -run=^$ -fuzz=FuzzParse -fuzztime=30s
