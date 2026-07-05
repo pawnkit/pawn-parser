@@ -10,6 +10,10 @@ func (p *parser) parsePostfix() *Node {
 			expr = p.parseCall(expr)
 		case token.LBracket:
 			expr = p.parseSubscript(expr)
+		case token.LBrace:
+			expr = p.parseCellSelection(expr)
+		case token.Dot:
+			expr = p.parseMemberSelection(expr)
 		case token.PlusPlus, token.MinusMinus:
 			opTok := p.advance()
 			node := p.newNode(KindUpdateExpression, expr)
@@ -20,6 +24,32 @@ func (p *parser) parsePostfix() *Node {
 			return expr
 		}
 	}
+}
+
+func (p *parser) parseCellSelection(target *Node) *Node {
+	p.advance()
+	index := p.parseExpression()
+	node := p.newNode(KindSubscriptExpression, target, index)
+	setField(node, "array", target)
+	setField(node, "index", index)
+	if p.at(token.RBrace) {
+		rb := p.advance()
+		node.End = rb.End.Offset
+		node.Trailing = rb.TrailingTrivia
+	} else {
+		node.HasError = true
+	}
+	return node
+}
+
+func (p *parser) parseMemberSelection(target *Node) *Node {
+	op := p.advance()
+	member := p.newLeaf(KindIdentifier, p.advance())
+	node := p.newNode(KindBinaryExpression, target, member)
+	setField(node, "left", target)
+	setField(node, "right", member)
+	node.Tok = op
+	return node
 }
 
 func (p *parser) parseCall(callee *Node) *Node {

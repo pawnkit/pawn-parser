@@ -82,6 +82,7 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	}
 
 	tag := p.parseOptionalTagPrefix()
+	callingConvention := p.parseDimensions()
 	name := p.parseFunctionName()
 
 	params := p.parseParameterList()
@@ -108,6 +109,10 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 		setField(node, "tag", tag)
 		node.addChild(tag)
 	}
+	for _, dimension := range callingConvention {
+		node.addChild(dimension)
+	}
+	setField(node, "calling_convention", firstOrNil(callingConvention))
 	setField(node, "name", name)
 	node.addChild(name)
 	setField(node, "parameters", params)

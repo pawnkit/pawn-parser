@@ -73,8 +73,7 @@ func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
 		}
 	}
 	pathEnd := last.End.Offset
-	pathNode := rawNode(p.source, pathStart, pathEnd)
-	pathNode.HasError = false
+	pathNode := directiveSpan(p.source, KindDirectivePath, pathStart, pathEnd, nil, last.TrailingTrivia)
 	pathNode.Trailing = last.TrailingTrivia
 
 	node := &Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia}

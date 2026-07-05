@@ -34,8 +34,7 @@ func (p *parser) parseStateSelector() *Node {
 func (p *parser) rawStateSelector() *Node {
 	stateStart := p.pos
 	p.skipAngleStateSelector()
-	n := rawNode(p.source, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset)
-	n.HasError = false
+	n := directiveSpan(p.source, KindStateSelector, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset, nil, nil)
 	return n
 }
 

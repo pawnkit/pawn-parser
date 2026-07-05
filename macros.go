@@ -108,9 +108,7 @@ func (p *parser) parseMacroParamList() (*Node, bool) {
 
 func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int) *Node {
 	raw := func() *Node {
-		n := rawNode(p.source, bodyStart, bodyEnd)
-		n.HasError = false
-		return n
+		return directiveSpan(p.source, KindMacroBody, bodyStart, bodyEnd, nil, nil)
 	}
 	if bodyStartIdx >= bodyEndIdx {
 		return raw()

@@ -92,7 +92,12 @@ func (p *parser) parseTernary() *Node {
 		return cond
 	}
 	p.advance()
+	savedSuppressTagCast := p.suppressTagCast
+	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon {
+		p.suppressTagCast = true
+	}
 	consequence := p.parseAssignment()
+	p.suppressTagCast = savedSuppressTagCast
 	if !p.at(token.Colon) {
 		node := p.newNode(KindTernaryExpression, cond, consequence)
 		node.HasError = true

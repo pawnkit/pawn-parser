@@ -353,6 +353,43 @@ func TestConditionalControlFlowWrapperIsPreserved(t *testing.T) {
 	}
 }
 
+func TestConditionalIfHeadersShareTrailingElse(t *testing.T) {
+	t.Parallel()
+	src := `stock F(value)
+{
+#if FEATURE
+	if (value == 1)
+#else
+	if (value == 2)
+#endif
+	{
+		return 1;
+	}
+	else return 0;
+}
+`
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.HasError {
+		t.Fatal("conditional headers with a shared else must parse cleanly")
+	}
+	body := f.Root.Children[0].Field("body")
+	shared := body.Children[0]
+	if shared.Kind != KindSharedConditional || shared.Field("alternative") == nil {
+		t.Fatalf("expected shared conditional with alternative, got %+v", shared)
+	}
+}
+
+func TestTopLevelOperatorMacroInvocation(t *testing.T) {
+	t.Parallel()
+	src := "PP_VARIANT_BIN_OP(+, var_add);\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if len(f.Root.Children) != 1 || f.Root.Children[0].Kind != KindMacroInvocation || f.Root.HasError {
+		t.Fatalf("expected clean macro invocation, got %+v", f.Root.Children)
+	}
+}
+
 func TestMacroQualifierFunctionPattern(t *testing.T) {
 	t.Parallel()
 	src := "ac_fpublic ac_DoThing(playerid)\n{\n    return playerid;\n}\n"

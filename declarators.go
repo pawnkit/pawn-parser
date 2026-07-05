@@ -65,6 +65,11 @@ func (p *parser) parseDeclarator() *Node {
 	node.addChild(name)
 	node.End = name.End
 	node.Trailing = name.Trailing
+	if p.at(token.Lt) {
+		selector := p.parseStateSelector()
+		setField(node, "capacity", selector)
+		node.addChild(selector)
+	}
 
 	dims := p.parseDimensions()
 	for _, d := range dims {
@@ -113,15 +118,22 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		node.addChild(name)
 	}
 
-	if increment := p.parseEnumIncrementClause(); increment != nil {
-		setField(node, "increment", increment)
-		node.addChild(increment)
+	var tag *Node
+	if p.at(token.Colon) && p.peek(1).Kind == token.Identifier {
+		colon := p.advance()
+		tag = p.newLeaf(KindTaggedType, p.advance())
+		tag.Start = colon.Start.Offset
+	} else {
+		tag = p.parseOptionalTagPrefix()
 	}
-
-	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
 		setField(node, "tag", tag)
 		node.addChild(tag)
+	}
+
+	if increment := p.parseEnumIncrementClause(); increment != nil {
+		setField(node, "increment", increment)
+		node.addChild(increment)
 	}
 
 	if !p.at(token.LBrace) {
@@ -178,8 +190,7 @@ func (p *parser) parseEnumIncrementClause() *Node {
 			// Other tokens don't affect paren depth.
 		}
 	}
-	n := rawNode(p.source, lp.Start.Offset, last.End.Offset)
-	n.HasError = false
+	n := directiveSpan(p.source, KindEnumIncrementClause, lp.Start.Offset, last.End.Offset, lp.LeadingTrivia, last.TrailingTrivia)
 	n.Leading = lp.LeadingTrivia
 	n.Trailing = last.TrailingTrivia
 	return n

@@ -91,6 +91,11 @@ const (
 	KindStringizeExpression
 	KindStringConcat
 	KindConditionalSplice
+	KindDirectivePath
+	KindMacroBody
+	KindEnumIncrementClause
+	KindStateSelector
+	KindMacroInvocation
 )
 
 func (k Kind) String() string {
@@ -125,6 +130,11 @@ var kindNames = map[Kind]string{
 	KindConditionalRegion:       "conditional_region",
 	KindConditionalBranch:       "conditional_branch",
 	KindConditionalSplice:       "conditional_splice",
+	KindDirectivePath:           "directive_path",
+	KindMacroBody:               "macro_body",
+	KindEnumIncrementClause:     "enum_increment_clause",
+	KindStateSelector:           "state_selector",
+	KindMacroInvocation:         "macro_invocation",
 	KindSharedConditional:       "shared_conditional",
 	KindSharedConditionalPrefix: "shared_conditional_prefix",
 	KindConditionalFunction:     "conditional_function_definition",

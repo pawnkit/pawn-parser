@@ -154,6 +154,10 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			continue
 		}
 		if item != nil {
+			if p.attachConditionalContinuation(items, item) {
+				continue
+			}
+			p.attachSharedAlternative(item)
 			if item.Kind == KindConditionalRegion && p.at(token.LBrace) && conditionalFunctionHeaders(item) {
 				body := p.parseBlock()
 				wrapper := p.newNode(KindConditionalFunction, item, body)
@@ -165,6 +169,33 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 		}
 	}
 	return items
+}
+
+func (p *parser) attachSharedAlternative(conditional *Node) {
+	if conditional.Kind != KindConditionalRegion || !p.at(token.KwElse) {
+		return
+	}
+	p.advance()
+	alternative := p.parseControlledStatement()
+	setField(conditional, "alternative", alternative)
+	conditional.addChild(alternative)
+}
+
+func (p *parser) attachConditionalContinuation(items []*Node, conditional *Node) bool {
+	if len(items) == 0 || conditional.Kind != KindSharedConditional || !p.at(token.KwElse) {
+		return false
+	}
+	previous := items[len(items)-1]
+	if previous.Kind != KindIfStatement || previous.Field("alternative") != nil {
+		return false
+	}
+	setField(previous, "conditional_alternatives", conditional)
+	previous.addChild(conditional)
+	p.advance()
+	alternative := p.parseControlledStatement()
+	setField(previous, "alternative", alternative)
+	previous.addChild(alternative)
+	return true
 }
 
 func conditionalFunctionHeaders(region *Node) bool {

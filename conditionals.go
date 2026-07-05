@@ -198,8 +198,17 @@ func conditionalNeedsSharedFallback(region *Node, source []byte) bool {
 				item.Kind == KindSharedConditional || item.Kind == KindConditionalFunction {
 				continue
 			}
+			if item.HasError {
+				return true
+			}
+			if item.Kind == KindIfStatement {
+				consequence := item.Field("consequence")
+				if consequence != nil && consequence.Kind == KindEmptyStatement && consequence.Start == consequence.End {
+					return true
+				}
+			}
 			switch item.Kind {
-			case KindFunctionDeclaration, KindStateStatement:
+			case KindFunctionDeclaration, KindStateStatement, KindIfStatement:
 				if item.HasError {
 					return true
 				}
@@ -256,25 +265,8 @@ func (p *parser) rawConditionalRegion() *Node {
 		}
 		last = p.consumeLogicalLineCounting(allLive(), &bracketDepth)
 		if pastEndif {
-			if bracketDepth == 1 && !p.atEnd() {
-				prefix := &Node{Kind: KindSharedConditionalPrefix, Start: startOffset, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[startOffset:last.End.Offset]}
-				body := &Node{Kind: KindBlock, Start: last.End.Offset}
-				items := p.parseItemSequence(itemGrammar{
-					parseItem: func(p *parser) *Node { return p.parseStatement() },
-					stop:      func(p *parser) bool { return p.at(token.RBrace) },
-				})
-				for _, item := range items {
-					body.addChild(item)
-				}
-				if p.at(token.RBrace) {
-					rb := p.advance()
-					body.End = rb.End.Offset
-					body.Trailing = rb.TrailingTrivia
-					node := p.newNode(KindSharedConditional, prefix, body)
-					setField(node, "prefix", prefix)
-					setField(node, "body", body)
-					return node
-				}
+			if node := p.finishSharedConditional(startOffset, leading, last, bracketDepth); node != nil {
+				return node
 			}
 			if bracketDepth <= 0 {
 				break
@@ -289,6 +281,49 @@ func (p *parser) rawConditionalRegion() *Node {
 		Trailing: last.TrailingTrivia,
 		Raw:      p.source[startOffset:last.End.Offset],
 	}
+}
+
+func (p *parser) finishSharedConditional(start int, leading []token.Trivia, last token.Token, depth int) *Node {
+	prefix := &Node{Kind: KindSharedConditionalPrefix, Start: start, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[start:last.End.Offset]}
+	if depth == 0 && p.at(token.LBrace) {
+		return p.newSharedConditional(prefix, p.parseBlock())
+	}
+	if depth != 1 || p.atEnd() {
+		return nil
+	}
+	body := &Node{Kind: KindBlock, Start: last.End.Offset}
+	items := p.parseItemSequence(itemGrammar{
+		parseItem: func(p *parser) *Node { return p.parseStatement() },
+		stop:      func(p *parser) bool { return p.at(token.RBrace) },
+	})
+	for _, item := range items {
+		body.addChild(item)
+	}
+	if !p.at(token.RBrace) {
+		return nil
+	}
+	rb := p.advance()
+	body.End = rb.End.Offset
+	body.Trailing = rb.TrailingTrivia
+	return p.newSharedConditional(prefix, body)
+}
+
+func (p *parser) newSharedConditional(prefix, body *Node) *Node {
+	node := p.newNode(KindSharedConditional, prefix, body)
+	setField(node, "prefix", prefix)
+	setField(node, "body", body)
+	p.parseSharedConditionalAlternative(node)
+	return node
+}
+
+func (p *parser) parseSharedConditionalAlternative(node *Node) {
+	if !p.at(token.KwElse) {
+		return
+	}
+	p.advance()
+	alternative := p.parseControlledStatement()
+	setField(node, "alternative", alternative)
+	node.addChild(alternative)
 }
 
 func (p *parser) consumeLogicalLineCounting(count bool, depth *int) token.Token {

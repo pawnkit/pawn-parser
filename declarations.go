@@ -13,6 +13,9 @@ func isKeywordToken(k token.Kind) bool {
 }
 
 func (p *parser) parseDeclaration() *Node {
+	if p.peekIsOperatorMacroInvocation() {
+		return p.parseOperatorMacroInvocation()
+	}
 	if p.at(token.KwEnum) {
 		return p.parseEnumDeclaration(nil)
 	}
@@ -39,6 +42,42 @@ func (p *parser) parseDeclaration() *Node {
 	return p.parseVariableDeclarationWithQualifiers(quals)
 }
 
+func (p *parser) peekIsOperatorMacroInvocation() bool {
+	if !p.at(token.Identifier) || p.peek(1).Kind != token.LParen {
+		return false
+	}
+	switch p.peek(2).Kind {
+	case token.Plus, token.Minus, token.Star, token.Slash, token.Percent,
+		token.PlusPlus, token.MinusMinus, token.Eq, token.NotEq,
+		token.Lt, token.Gt, token.LtEq, token.GtEq, token.Bang, token.Tilde:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *parser) parseOperatorMacroInvocation() *Node {
+	start := p.cur().Start.Offset
+	leading := p.cur().LeadingTrivia
+	depth := 0
+	last := p.cur()
+	for !p.atEnd() {
+		last = p.advance()
+		switch last.Kind {
+		case token.LParen:
+			depth++
+		case token.RParen:
+			depth--
+		case token.Semicolon:
+			if depth == 0 {
+				return directiveSpan(p.source, KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
+			}
+		default:
+		}
+	}
+	return directiveSpan(p.source, KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
+}
+
 func (p *parser) canStartDeclarator() bool {
 	saved := p.pos
 	defer func() { p.pos = saved }()
@@ -63,6 +102,7 @@ func (p *parser) peekIsFunctionDecl() bool {
 	defer func() { p.pos = saved }()
 
 	p.parseOptionalTagPrefix()
+	p.parseDimensions()
 	if p.at(token.KwOperator) {
 		p.advance()
 		if isOverloadableOperator(p.cur().Kind) {
@@ -79,7 +119,7 @@ func (p *parser) peekIsFunctionDecl() bool {
 
 func isOverloadableOperator(k token.Kind) bool {
 	switch k {
-	case token.Plus, token.Minus, token.Star, token.Slash, token.Percent,
+	case token.Plus, token.Minus, token.Star, token.Slash, token.Percent, token.Tilde,
 		token.Assign, token.Eq, token.NotEq, token.Lt, token.Gt, token.LtEq, token.GtEq,
 		token.Bang, token.PlusPlus, token.MinusMinus:
 		return true
