@@ -45,6 +45,11 @@
             "target": "/root/.earthly",
             "type": "bind"
         },
+        {
+            "source": "${localEnv:HOME}/.1password",
+            "target": "/root/.1password",
+            "type": "bind"
+        },
         // Docker socket to access the host Docker server
         {
             "source": "/var/run/docker.sock",
