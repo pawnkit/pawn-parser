@@ -93,7 +93,8 @@ func (p *parser) parseTernary() *Node {
 	}
 	p.advance()
 	savedSuppressTagCast := p.suppressTagCast
-	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon {
+	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon &&
+		!p.knowsTag(p.cur().Text(p.source)) && p.peek(2).Kind != token.LParen {
 		p.suppressTagCast = true
 	}
 	consequence := p.parseAssignment()

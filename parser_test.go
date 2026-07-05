@@ -390,6 +390,37 @@ func TestTopLevelOperatorMacroInvocation(t *testing.T) {
 	}
 }
 
+func TestTernaryTrueBranchStartsWithTagCast(t *testing.T) {
+	t.Parallel()
+	src := "stock Float:Clamp(Float:value) { return Float:(value < Float:(0.0) ? Float:(0.0) : value); }\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.HasError {
+		t.Fatal("tagged ternary branch must parse cleanly")
+	}
+	ret := f.Root.Children[0].Field("body").Children[0]
+	outer := ret.Field("value")
+	paren := outer.Field("expression")
+	ternary := paren.Field("expression")
+	if ternary == nil || ternary.Kind != KindTernaryExpression {
+		t.Fatalf("expected ternary expression, got %+v", ternary)
+	}
+	if consequence := ternary.Field("consequence"); consequence == nil || consequence.Kind != KindTaggedExpression || consequence.Text([]byte(src)) != "Float:(0.0)" {
+		t.Fatalf("expected tagged true branch, got %+v", consequence)
+	}
+}
+
+func TestMacroMissingFinalSemicolonStaysRaw(t *testing.T) {
+	t.Parallel()
+	src := "#define IF_ELSE_WRAP(%0) if (%0) return 1; else return 0\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	value := f.Root.Children[0].Field("value")
+	if value == nil || value.Kind != KindRaw || value.HasError {
+		t.Fatalf("unsafe-to-rebrace macro value must be clean raw text, got %+v", value)
+	}
+}
+
 func TestMacroQualifierFunctionPattern(t *testing.T) {
 	t.Parallel()
 	src := "ac_fpublic ac_DoThing(playerid)\n{\n    return playerid;\n}\n"

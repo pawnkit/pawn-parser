@@ -1,6 +1,10 @@
 package parser
 
-import "github.com/pawnkit/pawn-parser/token"
+import (
+	"slices"
+
+	"github.com/pawnkit/pawn-parser/token"
+)
 
 func (p *parser) parseDefineDirective(startOffset int) *Node {
 	leading := p.cur().LeadingTrivia
@@ -123,9 +127,21 @@ func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int
 		return expr
 	}
 	if stmt, ok := tryParseAll(bodyToks, p.source, true, (*parser).parseStatement); ok {
+		if hasMissingSemicolon(stmt) {
+			n := rawNode(p.source, bodyStart, bodyEnd)
+			n.HasError = false
+			return n
+		}
 		return stmt
 	}
 	return raw()
+}
+
+func hasMissingSemicolon(node *Node) bool {
+	if node.MissingSemi {
+		return true
+	}
+	return slices.ContainsFunc(node.Children, hasMissingSemicolon)
 }
 
 func tryParseAll(toks []token.Token, source []byte, lenientTrailingSemi bool, fn func(*parser) *Node) (*Node, bool) {
