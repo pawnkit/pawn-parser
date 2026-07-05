@@ -17,13 +17,13 @@ type realWorldFixture struct {
 	path    string
 }
 
-func TestRealWorldFixtures(t *testing.T) { //nolint:paralleltest
+func TestRealWorldFixtures(t *testing.T) { //nolint:paralleltest // Sequential parsing bounds peak corpus memory.
 	fixtures := readRealWorldFixtures(t)
 	if len(fixtures) != 45 {
 		t.Fatalf("expected 45 real-world fixtures, got %d", len(fixtures))
 	}
 
-	for _, fixture := range fixtures { //nolint:paralleltest
+	for _, fixture := range fixtures { //nolint:paralleltest // Subtests intentionally run sequentially.
 		name := fixture.project + "/" + fixture.path
 		t.Run(name, func(t *testing.T) {
 			sourcePath := filepath.Join(realWorldFixtureDir, fixture.project, filepath.FromSlash(fixture.path))
