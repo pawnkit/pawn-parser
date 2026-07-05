@@ -178,7 +178,30 @@ func (p *parser) attachSharedAlternative(conditional *Node) {
 	p.advance()
 	alternative := p.parseControlledStatement()
 	setField(conditional, "alternative", alternative)
-	conditional.addChild(alternative)
+	for _, branch := range conditional.Children {
+		ifStatement := trailingBranchIf(branch)
+		if ifStatement == nil || ifStatement.Field("alternative") != nil {
+			continue
+		}
+		setField(ifStatement, "alternative", alternative)
+		setField(branch, "shared_alternative", alternative)
+	}
+	conditional.End = alternative.End
+	conditional.Trailing = alternative.Trailing
+}
+
+func trailingBranchIf(branch *Node) *Node {
+	for i := len(branch.Children) - 1; i >= 0; i-- {
+		child := branch.Children[i]
+		if child.Kind.IsDirective() {
+			continue
+		}
+		if child.Kind == KindIfStatement {
+			return child
+		}
+		return nil
+	}
+	return nil
 }
 
 func (p *parser) attachConditionalContinuation(items []*Node, conditional *Node) bool {

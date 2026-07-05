@@ -1,6 +1,9 @@
 package parser
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func mustNotBeBroken(t *testing.T, f *File, src string) {
 	t.Helper()
@@ -377,6 +380,46 @@ func TestConditionalIfHeadersShareTrailingElse(t *testing.T) {
 	shared := body.Children[0]
 	if shared.Kind != KindSharedConditional || shared.Field("alternative") == nil {
 		t.Fatalf("expected shared conditional with alternative, got %+v", shared)
+	}
+}
+
+func TestConditionalRegionBranchesShareTrailingElse(t *testing.T) {
+	t.Parallel()
+	src := `stock F(a)
+{
+#if defined B
+	if (a == 1) a = 10;
+#else
+	if (a == 2) a = 10;
+#endif
+	else if (a == 3)
+	{
+		a = 20;
+	}
+}
+`
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.HasError {
+		t.Fatal("conditional branches with a shared else must parse cleanly")
+	}
+	body := f.Root.Children[0].Field("body")
+	if len(body.Children) != 1 || body.Children[0].Kind != KindConditionalRegion {
+		t.Fatalf("expected one conditional region, got %v", kindsOf(body.Children))
+	}
+	region := body.Children[0]
+	alternative := region.Field("alternative")
+	if alternative == nil || alternative.Kind != KindIfStatement {
+		t.Fatalf("expected shared else-if alternative, got %+v", alternative)
+	}
+	for _, branch := range region.Children[:2] {
+		branchIf := trailingBranchIf(branch)
+		if branchIf == nil || branchIf.Field("alternative") != alternative {
+			t.Fatalf("branch does not reference the shared alternative: %+v", branch)
+		}
+	}
+	if got := region.Text([]byte(src)); !strings.Contains(got, "else if (a == 3)") {
+		t.Fatalf("conditional region lost the else token: %q", got)
 	}
 }
 
