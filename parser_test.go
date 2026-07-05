@@ -1,8 +1,6 @@
 package parser
 
-import (
-	"testing"
-)
+import "testing"
 
 func mustNotBeBroken(t *testing.T, f *File, src string) {
 	t.Helper()
@@ -302,6 +300,56 @@ func TestMultilineDeclaratorListSplitByConditionalRegion(t *testing.T) {
 	}
 	if !foundRegion {
 		t.Fatalf("expected a conditional region among declarators, got %v", kindsOf(decl.Children))
+	}
+}
+
+func TestConditionalControlFlowWrapperIsPreserved(t *testing.T) {
+	t.Parallel()
+	src := `public HandleClick(playerid)
+{
+#if AD_FAST_DOUBLE_CLICK
+	if(gtc - adLastClicked[playerid] <= AD_MAX_CLICK_INTERVAL)
+	{
+		adLastClicked[playerid] = 0;
+#endif
+		new tmp_dialogid = adDialogID[playerid], tmp_itemid = adItemID[playerid];
+		ShowPlayerAltDialog(playerid, AD_INVALID_ID, -1, "", "", "");
+		CallRemoteFunction("OnAltDialogResponse", "iiii", playerid, tmp_dialogid, 1, tmp_itemid);
+#if AD_FAST_DOUBLE_CLICK
+	}
+	else adLastClicked[playerid] = gtc;
+#endif
+}
+`
+	f := Parse([]byte(src))
+	if f == nil || f.Root == nil {
+		t.Fatal("wrapper idiom must be preserved in a CST")
+	}
+	if got := f.Root.Text([]byte(src)); got != src {
+		t.Fatalf("wrapper idiom was not preserved verbatim:\n%q", got)
+	}
+	if len(f.Root.Children) != 1 || f.Root.Children[0].Kind != KindFunctionDefinition {
+		t.Fatalf("expected the containing function to remain structured, got %v", kindsOf(f.Root.Children))
+	}
+	fn := f.Root.Children[0]
+	if fn.HasError || f.Root.HasError || f.Broken {
+		t.Fatal("conditional splices must not be reported as invalid Pawn")
+	}
+	body := fn.Field("body")
+	if body == nil || len(body.Children) != 5 {
+		t.Fatalf("expected two splices around three shared statements, got %+v", body)
+	}
+	want := []Kind{KindConditionalSplice, KindVariableDeclaration, KindExpressionStatement, KindExpressionStatement, KindConditionalSplice}
+	for i, child := range body.Children {
+		if child.Kind != want[i] || child.HasError {
+			t.Fatalf("body child %d: expected clean %s, got %+v", i, want[i], child)
+		}
+	}
+	if got := body.Children[0].Text([]byte(src)); got != "#if AD_FAST_DOUBLE_CLICK\n\tif(gtc - adLastClicked[playerid] <= AD_MAX_CLICK_INTERVAL)\n\t{\n\t\tadLastClicked[playerid] = 0;\n#endif" {
+		t.Fatalf("opening splice consumed shared source:\n%q", got)
+	}
+	if got := body.Children[4].Text([]byte(src)); got != "#if AD_FAST_DOUBLE_CLICK\n\t}\n\telse adLastClicked[playerid] = gtc;\n#endif" {
+		t.Fatalf("closing splice was not preserved exactly:\n%q", got)
 	}
 }
 

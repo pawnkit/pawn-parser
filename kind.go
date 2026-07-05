@@ -90,6 +90,7 @@ const (
 	KindIteratorArgument
 	KindStringizeExpression
 	KindStringConcat
+	KindConditionalSplice
 )
 
 func (k Kind) String() string {
@@ -123,6 +124,7 @@ var kindNames = map[Kind]string{
 	KindDirectiveRaw:            "directive_raw",
 	KindConditionalRegion:       "conditional_region",
 	KindConditionalBranch:       "conditional_branch",
+	KindConditionalSplice:       "conditional_splice",
 	KindSharedConditional:       "shared_conditional",
 	KindSharedConditionalPrefix: "shared_conditional_prefix",
 	KindConditionalFunction:     "conditional_function_definition",

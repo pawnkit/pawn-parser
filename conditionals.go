@@ -15,7 +15,131 @@ func (p *parser) parseConditionalRegion(g itemGrammar) *Node {
 	}
 	p.pos = startPos
 	p.broken = savedBroken
+	if p.isConditionalSplice() {
+		return p.consumeConditionalSplice()
+	}
 	return p.rawConditionalRegion()
+}
+
+func (p *parser) isConditionalSplice() bool {
+	end, braceDelta, ok := p.conditionalRegionExtent(p.pos)
+	if !ok {
+		return false
+	}
+	if braceDelta < 0 {
+		return true
+	}
+	return braceDelta > 0 && p.hasClosingConditionalSplice(end)
+}
+
+func (p *parser) hasClosingConditionalSplice(pos int) bool {
+	depth := 0
+	for pos < len(p.toks) && p.toks[pos].Kind != token.EOF {
+		switch p.toks[pos].Kind {
+		case token.LBrace:
+			depth++
+		case token.RBrace:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case token.Hash:
+			if classifyDirectiveName(p.peekAt(pos+1).Text(p.source)) == dirIf {
+				end, braceDelta, ok := p.conditionalRegionExtent(pos)
+				if !ok {
+					return false
+				}
+				if depth == 0 && braceDelta < 0 {
+					return true
+				}
+				pos = end
+				continue
+			}
+			pos = p.afterLogicalLine(pos)
+			continue
+		default:
+			// Other tokens do not affect the surrounding brace depth.
+		}
+		pos++
+	}
+	return false
+}
+
+func (p *parser) conditionalRegionExtent(start int) (end, braceDelta int, ok bool) {
+	depth := 0
+	for pos := start; pos < len(p.toks); pos++ {
+		tok := p.toks[pos]
+		if tok.Kind == token.Hash {
+			switch classifyDirectiveName(p.peekAt(pos + 1).Text(p.source)) {
+			case dirIf:
+				depth++
+			case dirEndif:
+				depth--
+				if depth == 0 {
+					return p.afterLogicalLine(pos), braceDelta, true
+				}
+			}
+			continue
+		}
+		if depth > 0 {
+			switch tok.Kind {
+			case token.LBrace:
+				braceDelta++
+			case token.RBrace:
+				braceDelta--
+			default:
+				// Other tokens do not contribute to a brace splice.
+			}
+		}
+	}
+	return start, 0, false
+}
+
+func (p *parser) afterLogicalLine(pos int) int {
+	for pos < len(p.toks) {
+		pos++
+		if pos == len(p.toks) || lastTokenEndsLine(p.toks[pos-1]) {
+			break
+		}
+	}
+	return pos
+}
+
+func (p *parser) peekAt(pos int) token.Token {
+	if pos >= len(p.toks) {
+		return p.toks[len(p.toks)-1]
+	}
+	return p.toks[pos]
+}
+
+func (p *parser) consumeConditionalSplice() *Node {
+	start := p.cur().Start.Offset
+	leading := p.cur().LeadingTrivia
+	depth := 0
+	dummyBracketDepth := 0
+	var last token.Token
+	for !p.atEnd() {
+		if p.at(token.Hash) {
+			switch p.peekDirectiveKeyword() {
+			case dirIf:
+				depth++
+			case dirEndif:
+				depth--
+			}
+		}
+		last = p.consumeLogicalLineCounting(false, &dummyBracketDepth)
+		if depth == 0 {
+			break
+		}
+	}
+	return &Node{
+		Kind:     KindConditionalSplice,
+		Start:    start,
+		End:      last.End.Offset,
+		Leading:  leading,
+		Trailing: last.TrailingTrivia,
+		Raw:      p.source[start:last.End.Offset],
+	}
 }
 
 func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) {
