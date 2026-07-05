@@ -63,6 +63,7 @@ func (p *parser) skipAngleStateSelector() {
 func (p *parser) parseOptionalTagPrefix() *Node {
 	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon {
 		tagTok := p.advance()
+		p.rememberTag(tagTok.Text(p.source))
 		colon := p.advance()
 		node := &Node{Kind: KindTaggedType, Start: tagTok.Start.Offset, Leading: tagTok.LeadingTrivia}
 		node.addChild(p.newLeaf(KindIdentifier, tagTok))
@@ -101,6 +102,18 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		return node
 	}
 	return nil
+}
+
+func (p *parser) rememberTag(name string) {
+	if p.knownTags == nil {
+		p.knownTags = make(map[string]struct{})
+	}
+	p.knownTags[name] = struct{}{}
+}
+
+func (p *parser) knowsTag(name string) bool {
+	_, ok := p.knownTags[name]
+	return ok
 }
 
 func (p *parser) parseDimensions() []*Node {

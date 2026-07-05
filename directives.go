@@ -3,8 +3,9 @@ package parser
 import "github.com/pawnkit/pawn-parser/token"
 
 type itemGrammar struct {
-	parseItem func(p *parser) *Node
-	stop      func(p *parser) bool
+	parseItem                 func(p *parser) *Node
+	stop                      func(p *parser) bool
+	preserveRecoverySemicolon bool
 }
 
 func lastTokenEndsLine(t token.Token) bool {
@@ -147,7 +148,7 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			item = g.parseItem(p)
 		}
 		if p.pos == startPos {
-			if recovered := p.recoverStuckItem(); recovered != nil {
+			if recovered := p.recoverStuckItem(g.preserveRecoverySemicolon); recovered != nil {
 				items = append(items, recovered)
 			}
 			continue

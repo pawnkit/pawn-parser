@@ -234,6 +234,77 @@ func TestDeclaratorListSplitByConditionalRegion(t *testing.T) {
 	}
 }
 
+func TestLowercaseCustomTagCastInInitializer(t *testing.T) {
+	t.Parallel()
+	src := "const tag_uid:tag_uid_unknown = tag_uid:0;\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if len(f.Root.Children) != 1 || f.Root.Children[0].Kind != KindVariableDeclaration {
+		t.Fatalf("expected one variable declaration, got %v", kindsOf(f.Root.Children))
+	}
+	decl := f.Root.Children[0]
+	if decl.HasError {
+		t.Fatalf("declaration unexpectedly has an error: %+v", decl)
+	}
+	init := decl.Children[len(decl.Children)-1].Field("initializer")
+	if init == nil || init.Kind != KindTaggedExpression || init.Text([]byte(src)) != "tag_uid:0" {
+		t.Fatalf("expected lowercase tagged initializer, got %+v", init)
+	}
+}
+
+func TestTagKnowledgeDoesNotConsumeTernarySeparator(t *testing.T) {
+	t.Parallel()
+	src := "new value = enabled ? base + offset : fallback;\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if len(f.Root.Children) != 1 || f.Root.Children[0].HasError {
+		t.Fatalf("expected one clean declaration, got %v", kindsOf(f.Root.Children))
+	}
+	init := f.Root.Children[0].Children[len(f.Root.Children[0].Children)-1].Field("initializer")
+	if init == nil || init.Kind != KindTernaryExpression {
+		t.Fatalf("expected ternary initializer, got %+v", init)
+	}
+}
+
+func TestRawRecoveryStopsAtDeclarationSemicolon(t *testing.T) {
+	t.Parallel()
+	src := "new bad = unknown_tag:0;\nnew good = 1;\n"
+	f := Parse([]byte(src))
+	if len(f.Root.Children) < 2 {
+		t.Fatalf("expected recovery followed by another declaration, got %v", kindsOf(f.Root.Children))
+	}
+	last := f.Root.Children[len(f.Root.Children)-1]
+	if last.Kind != KindVariableDeclaration || last.HasError || last.Text([]byte(src)) != "new good = 1;" {
+		t.Fatalf("recovery swallowed the following declaration: %+v", last)
+	}
+}
+
+func TestMultilineDeclaratorListSplitByConditionalRegion(t *testing.T) {
+	t.Parallel()
+	src := "new\n\t#if defined CA_RayCastLineAngle\n\t\tFloat:cX, Float:cY, Float:cZ,\n\t\tFloat:rX, Float:rY, Float:rZ,\n\t\tFloat:minZ, Float:tmp,\n\t#endif\n\tFloat:otherDeclarator;\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if len(f.Root.Children) != 1 || f.Root.Children[0].Kind != KindVariableDeclaration {
+		t.Fatalf("expected one variable declaration, got %v", kindsOf(f.Root.Children))
+	}
+	decl := f.Root.Children[0]
+	if decl.HasError {
+		t.Fatalf("declaration unexpectedly has an error: %+v", decl)
+	}
+	foundRegion := false
+	for _, child := range decl.Children {
+		if child.Kind == KindConditionalRegion {
+			foundRegion = true
+		}
+		if child.Kind == KindRaw || child.HasError {
+			t.Fatalf("unexpected raw/error child %s [%d:%d]", child.Kind, child.Start, child.End)
+		}
+	}
+	if !foundRegion {
+		t.Fatalf("expected a conditional region among declarators, got %v", kindsOf(decl.Children))
+	}
+}
+
 func TestMacroQualifierFunctionPattern(t *testing.T) {
 	t.Parallel()
 	src := "ac_fpublic ac_DoThing(playerid)\n{\n    return playerid;\n}\n"

@@ -44,6 +44,7 @@ type parser struct {
 	allowMissingTrailingSemi bool
 
 	suppressTagCast bool
+	knownTags       map[string]struct{}
 
 	arena []Node
 }
@@ -119,7 +120,7 @@ func (p *parser) advance() token.Token {
 	return t
 }
 
-func (p *parser) recoverStuckItem() *Node {
+func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 	start := p.cur().Start.Offset
 	startIdx := p.pos
 	depth := 0
@@ -160,6 +161,9 @@ func (p *parser) recoverStuckItem() *Node {
 			if depth > 0 {
 				p.advance()
 				continue
+			}
+			if preserveSemicolon {
+				return p.stuckBoundary(start, startIdx)
 			}
 			last := p.advance()
 			return rawNode(p.source, start, last.End.Offset)

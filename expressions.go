@@ -177,7 +177,8 @@ func isTagCastStart(p *parser) bool {
 	if p.peek(1).Kind != token.Colon {
 		return false
 	}
-	return looksLikeTagName(p.cur().Text(p.source))
+	name := p.cur().Text(p.source)
+	return p.knowsTag(name) || looksLikeTagName(name)
 }
 
 func looksLikeTagName(name string) bool {

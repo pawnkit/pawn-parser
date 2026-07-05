@@ -38,8 +38,9 @@ func (p *parser) parseVariableDeclarationWithQualifiers(quals []*Node) *Node {
 
 func (p *parser) parseDeclaratorList() []*Node {
 	return p.parseItemSequence(itemGrammar{
-		parseItem: parseCommaListItem((*parser).parseDeclarator),
-		stop:      func(p *parser) bool { return p.at(token.Semicolon) },
+		parseItem:                 parseCommaListItem((*parser).parseDeclarator),
+		stop:                      func(p *parser) bool { return p.at(token.Semicolon) },
+		preserveRecoverySemicolon: true,
 	})
 }
 
