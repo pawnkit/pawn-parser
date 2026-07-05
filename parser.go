@@ -131,24 +131,7 @@ func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 	}
 	for !p.atEnd() {
 		if p.cur().Kind == token.Hash {
-			switch p.peekDirectiveKeyword() {
-			case dirIf:
-				live = append(live, true)
-			case dirElseif, dirElse:
-				if len(live) > 0 {
-					if live[len(live)-1] {
-						liveFalseCount++
-					}
-					live[len(live)-1] = false
-				}
-			case dirEndif:
-				if len(live) > 0 {
-					if !live[len(live)-1] {
-						liveFalseCount--
-					}
-					live = live[:len(live)-1]
-				}
-			}
+			live, liveFalseCount = p.updateRecoveryLiveness(live, liveFalseCount)
 		}
 		counting := allLive()
 		switch p.cur().Kind {
@@ -191,6 +174,28 @@ func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 		return nil
 	}
 	return rawNode(p.source, start, p.toks[len(p.toks)-1].End.Offset)
+}
+
+func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
+	switch p.peekDirectiveKeyword() {
+	case dirIf:
+		live = append(live, true)
+	case dirElseif, dirElse:
+		if len(live) > 0 {
+			if live[len(live)-1] {
+				liveFalseCount++
+			}
+			live[len(live)-1] = false
+		}
+	case dirEndif:
+		if len(live) > 0 {
+			if !live[len(live)-1] {
+				liveFalseCount--
+			}
+			live = live[:len(live)-1]
+		}
+	}
+	return live, liveFalseCount
 }
 
 func (p *parser) stuckBoundary(start, startIdx int) *Node {

@@ -25,7 +25,7 @@ func (p *parser) parseDeclaration() *Node {
 	if p.peekIsFunctionDecl() {
 		return p.parseFunctionLike(quals)
 	}
-	if !p.canStartDeclarator() && (len(quals) <= 0 || !p.at(token.Hash) || p.peekDirectiveKeyword() != dirIf) {
+	if !p.canStartDeclarator() && (len(quals) == 0 || !p.at(token.Hash) || p.peekDirectiveKeyword() != dirIf) {
 		start := p.cur().Start.Offset
 		if len(quals) > 0 {
 			start = quals[0].Start
