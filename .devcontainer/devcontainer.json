@@ -82,7 +82,7 @@
                 "editor.formatOnSave": true,
                 "go.buildTags": "",
                 "go.toolsEnvVars": {
-                    "CGO_ENABLED": "0"
+                    "CGO_ENABLED": "1"
                 },
                 "go.useLanguageServer": true,
                 "go.testEnvVars": {
