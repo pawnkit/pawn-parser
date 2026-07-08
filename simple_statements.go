@@ -62,25 +62,32 @@ func (p *parser) parseLabelStatement() *Node {
 func (p *parser) parseStateStatement() *Node {
 	kw := p.advance()
 	node := &Node{Kind: KindStateStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia}
-	if p.at(token.Identifier) {
-		name := p.newLeaf(KindIdentifier, p.advance())
-		setField(node, "state", name)
-		node.addChild(name)
-		if p.at(token.Colon) {
-			p.advance()
-			if p.at(token.Identifier) || isKeywordToken(p.cur().Kind) {
-				target := p.newLeaf(KindIdentifier, p.advance())
-				setField(node, "target", target)
-				node.addChild(target)
-			} else {
-				node.HasError = true
-			}
-		}
-	} else {
+	if !p.at(token.Identifier) {
 		node.HasError = true
+		p.consumeTrailingSemi(node)
+		return node
 	}
+
+	name := p.newLeaf(KindIdentifier, p.advance())
+	setField(node, "state", name)
+	node.addChild(name)
+	p.parseStateStatementTarget(node)
 	p.consumeTrailingSemi(node)
 	return node
+}
+
+func (p *parser) parseStateStatementTarget(node *Node) {
+	if !p.at(token.Colon) {
+		return
+	}
+	p.advance()
+	if !p.at(token.Identifier) && !isKeywordToken(p.cur().Kind) {
+		node.HasError = true
+		return
+	}
+	target := p.newLeaf(KindIdentifier, p.advance())
+	setField(node, "target", target)
+	node.addChild(target)
 }
 
 func (p *parser) parseExpressionStatement() *Node {
