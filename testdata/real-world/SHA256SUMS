@@ -32,6 +32,7 @@ c17656538beeebf003722270635a8d309f2bf311c19e740236c948a4f7188eca  ./sa-mp/BasicS
 273bb3c1e081ea4bbc7aa98896a7b90260b7c5be1e7797248241fa08605e123e  ./samp-sound-array/sound.inc
 cd9f79a959c7f8f568def8897bfbd3e0526d1869f726f4aca2fbe88f80f6055d  ./samp-stdlib/a_samp.inc
 f8607408fb11b699778f575f904e5729a4a9b665218ff4c679adf53bbfb3b947  ./samp-util/util.inc
+e84e7d730bf08b61b29add4cfb41624a53cde57a94246f6b2dcae2ca88efb918  ./samp-weapon-config/weapon-config.inc
 684c5b155913e12260404a74b302b8f4563ab6836b10d8c6b577ed4e5af57d9e  ./sscanf/sscanf2.inc
 8c26cc26760951db2f3abc427f9e1f9c4ba9de67ebc1dcf175877a168b214540  ./streamer/streamer.inc
 1017c63b15b35627e2493068397062b49d92aeadfa9992534fa81e50be588e23  ./ultimate-creator/creator.pwn

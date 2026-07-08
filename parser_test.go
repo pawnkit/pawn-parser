@@ -71,6 +71,31 @@ func TestParseStringizeOperator(t *testing.T) {
 	}
 }
 
+func TestParseStringizeCallArgument(t *testing.T) {
+	t.Parallel()
+	src := "stock F(playerid) {\n    s_Timer[playerid] = SetTimerEx(#DelayedDeath, 1200, false, \"iii\", playerid, issuerid, weaponid);\n}\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.Children[0].HasError {
+		t.Fatalf("function unexpectedly HasError for '#IDENT' call argument:\n%s", src)
+	}
+}
+
+func TestParseStateStatementWithAutomaton(t *testing.T) {
+	t.Parallel()
+	src := "public OnGameModeInit()\n{\n    state _ALS : _ALS_go;\n    return 1;\n}\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	fn := f.Root.Children[0]
+	if fn.HasError {
+		t.Fatalf("function unexpectedly HasError for state statement:\n%s", src)
+	}
+	stmt := fn.Field("body").Children[0]
+	if stmt.Kind != KindStateStatement || stmt.Field("target") == nil {
+		t.Fatalf("expected state statement with target, got %+v", stmt)
+	}
+}
+
 func TestParseUnsignedShiftOperator(t *testing.T) {
 	t.Parallel()
 	src := "stock F(x) {\n    return x >>> 1;\n}\n"

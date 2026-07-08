@@ -19,8 +19,8 @@ type realWorldFixture struct {
 
 func TestRealWorldFixtures(t *testing.T) { //nolint:paralleltest // Sequential parsing bounds peak corpus memory.
 	fixtures := readRealWorldFixtures(t)
-	if len(fixtures) != 45 {
-		t.Fatalf("expected 45 real-world fixtures, got %d", len(fixtures))
+	if len(fixtures) != 46 {
+		t.Fatalf("expected 46 real-world fixtures, got %d", len(fixtures))
 	}
 
 	for _, fixture := range fixtures { //nolint:paralleltest // Subtests intentionally run sequentially.

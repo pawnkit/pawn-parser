@@ -6,6 +6,7 @@ type itemGrammar struct {
 	parseItem                 func(p *parser) *Node
 	stop                      func(p *parser) bool
 	preserveRecoverySemicolon bool
+	parseUnknownHashAsItem    bool
 }
 
 func lastTokenEndsLine(t token.Token) bool {
@@ -141,6 +142,12 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			switch p.peekDirectiveKeyword() {
 			case dirIf:
 				item = p.parseConditionalRegion(g)
+			case dirUnknown:
+				if g.parseUnknownHashAsItem {
+					item = g.parseItem(p)
+				} else {
+					item = p.parseSingleDirective()
+				}
 			default:
 				item = p.parseSingleDirective()
 			}
@@ -265,7 +272,8 @@ func parseCommaListItem(parseOne func(*parser) *Node) func(*parser) *Node {
 func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.Kind, parseItem func(*parser) *Node) *Node {
 	node := &Node{Kind: kind, Start: open.Start.Offset, Leading: open.LeadingTrivia}
 	items := p.parseItemSequence(itemGrammar{
-		parseItem: parseCommaListItem(parseItem),
+		parseItem:              parseCommaListItem(parseItem),
+		parseUnknownHashAsItem: true,
 		stop: func(p *parser) bool {
 			p.abortIfSharedAcrossBranch()
 			return p.at(closeTok)

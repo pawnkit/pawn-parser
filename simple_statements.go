@@ -66,6 +66,16 @@ func (p *parser) parseStateStatement() *Node {
 		name := p.newLeaf(KindIdentifier, p.advance())
 		setField(node, "state", name)
 		node.addChild(name)
+		if p.at(token.Colon) {
+			p.advance()
+			if p.at(token.Identifier) || isKeywordToken(p.cur().Kind) {
+				target := p.newLeaf(KindIdentifier, p.advance())
+				setField(node, "target", target)
+				node.addChild(target)
+			} else {
+				node.HasError = true
+			}
+		}
 	} else {
 		node.HasError = true
 	}

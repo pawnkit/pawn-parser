@@ -11,6 +11,7 @@ fcnpc-ai	FCNPC-AI.inc	https://raw.githubusercontent.com/WoutProvost/FCNPC-AI/mas
 samp-sound-array	sound.inc	https://raw.githubusercontent.com/WoutProvost/samp-sound-array/master/sound.inc
 marker-plus	markerplus.inc	https://raw.githubusercontent.com/Ramon-Sd/marker-plus/main/markerplus.inc
 pawn-requests	requests.inc	https://raw.githubusercontent.com/Southclaws/pawn-requests/master/requests.inc
+samp-weapon-config	weapon-config.inc	https://raw.githubusercontent.com/oscar-broman/samp-weapon-config/master/weapon-config.inc
 x-dialog	X.Dialog.inc	https://raw.githubusercontent.com/X-Clubs/includes-X.Dialog-for-open.mp-and-samp/main/X.Dialog.inc
 ysf	YSF.inc	https://raw.githubusercontent.com/IS4Code/YSF/master/sampsvr_files/pawno/include/YSF.inc
 fcnpc	FCNPC.inc	https://raw.githubusercontent.com/ziggi/FCNPC/master/sampsvr_files/FCNPC.inc
