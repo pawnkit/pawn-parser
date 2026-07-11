@@ -3,6 +3,8 @@ package parser
 import "testing"
 
 func TestFileSet(t *testing.T) {
+	t.Parallel()
+
 	var files FileSet
 	data := []byte("main() {}")
 	first := files.Add("main.pwn", data)

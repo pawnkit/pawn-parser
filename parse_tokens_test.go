@@ -8,6 +8,8 @@ import (
 )
 
 func TestParseTokensAddsEOFPreservingCallerTokens(t *testing.T) {
+	t.Parallel()
+
 	source := []byte("main() {}")
 	tokens := lexer.Tokenize(source)
 	tokens = tokens[:len(tokens)-1]
@@ -38,6 +40,8 @@ func TestParseTokensAddsEOFPreservingCallerTokens(t *testing.T) {
 }
 
 func TestParseTokensAcceptsEmptyInput(t *testing.T) {
+	t.Parallel()
+
 	file := ParseTokens(nil, nil)
 	if file.HasParseErrors() {
 		t.Fatal("ParseTokens returned parse errors for empty input")

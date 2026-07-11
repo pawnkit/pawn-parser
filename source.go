@@ -1,6 +1,9 @@
 package parser
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // FileID identifies a logical source file in a FileSet.
 type FileID uint32
@@ -15,13 +18,19 @@ type SourceFile struct {
 // FileSet owns logical source files and assigns deterministic IDs in insertion
 // order. Logical names can be used instead of host paths in generated output.
 type FileSet struct {
-	files []SourceFile
+	files  []SourceFile
+	lastID FileID
 }
 
 // Add copies data into the set and returns the newly added source file.
 func (s *FileSet) Add(name string, data []byte) SourceFile {
+	if s.lastID == math.MaxUint32 {
+		panic("parser: too many source files")
+	}
+	s.lastID++
+
 	file := SourceFile{
-		ID:   FileID(len(s.files) + 1),
+		ID:   s.lastID,
 		Name: name,
 		Data: append([]byte(nil), data...),
 	}
