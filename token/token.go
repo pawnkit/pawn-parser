@@ -195,6 +195,21 @@ type Position struct {
 	Col    int
 }
 
+// Span identifies a range in one logical source file.
+type Span struct {
+	File  uint32
+	Start Position
+	End   Position
+}
+
+// Origin records where an expanded token came from. Parent links describe
+// include and macro expansion chains without changing virtual token offsets.
+type Origin struct {
+	Span   Span
+	Macro  string
+	Parent *Origin
+}
+
 // Token is a single lexical token together with its surrounding trivia.
 type Token struct {
 	Kind           Kind
@@ -202,6 +217,7 @@ type Token struct {
 	End            Position
 	LeadingTrivia  []Trivia
 	TrailingTrivia []Trivia
+	Origin         *Origin
 }
 
 // Text returns t's exact source text.

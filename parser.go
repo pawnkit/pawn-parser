@@ -26,6 +26,20 @@ func (f *File) HasParseErrors() bool {
 // File.Broken and Node.HasError.
 func Parse(source []byte) *File {
 	toks := lexer.Tokenize(source)
+	return ParseTokens(source, toks)
+}
+
+// ParseTokens parses a caller-provided token stream. It is useful for parsing
+// preprocessed tokens whose Origin fields retain expansion history.
+func ParseTokens(source []byte, toks []token.Token) *File {
+	if len(toks) == 0 || toks[len(toks)-1].Kind != token.EOF {
+		end := token.Position{Offset: len(source)}
+		toks = append(append([]token.Token(nil), toks...), token.Token{
+			Kind:  token.EOF,
+			Start: end,
+			End:   end,
+		})
+	}
 	p := &parser{source: source, toks: toks, arena: make([]Node, 0, len(source)/4+16)}
 	root := p.parseSourceFile()
 	return &File{Source: source, Tokens: toks, Root: root, Broken: p.broken}
