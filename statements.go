@@ -45,6 +45,9 @@ func (p *parser) parseStatement() *Node {
 		}
 		return p.parseSingleDirective()
 	default:
+		if p.macroFunctionQualifierStart() {
+			return p.parseFunctionLike(p.collectQualifiers())
+		}
 		if isLabelStart(p) {
 			return p.parseLabelStatement()
 		}

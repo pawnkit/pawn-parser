@@ -150,6 +150,14 @@ func (p *parser) parseUnary() *Node {
 	}
 	defer p.exitDepth()
 
+	if p.isMacroUnaryOperator() {
+		opTok := p.advance()
+		operand := p.parseUnary()
+		node := p.newNode(KindUnaryExpression, operand)
+		setField(node, "expression", operand)
+		node.Tok = opTok
+		return node
+	}
 	if isUnaryOp(p.cur().Kind) {
 		opTok := p.advance()
 		operand := p.parseUnary()
@@ -171,6 +179,18 @@ func (p *parser) parseUnary() *Node {
 		return p.parseTaggedExpression()
 	}
 	return p.parsePostfix()
+}
+
+func (p *parser) isMacroUnaryOperator() bool {
+	if !p.at(token.Identifier) || p.peek(1).Kind != token.Identifier {
+		return false
+	}
+	switch p.cur().Text(p.source) {
+	case "defer", "repeat", "stop":
+		return true
+	default:
+		return false
+	}
 }
 
 func isTagCastStart(p *parser) bool {

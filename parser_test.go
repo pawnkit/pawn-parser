@@ -548,6 +548,58 @@ func TestUnbracedCommandAliasWithDoubleColonCall(t *testing.T) {
 	}
 }
 
+func TestRealWorldMacroSyntaxPatternsParseCleanly(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "iterator dimensions",
+			src:  "new Iterator:items[10]<20>;\n",
+		},
+		{
+			name: "inline function",
+			src:  "main()\n{\n    inline Callback(value)\n    {\n        return value;\n    }\n}\n",
+		},
+		{
+			name: "timers",
+			src: "timer Tick[1000]() { return 1; }\n\nmain()\n{\n" +
+				"    defer Later();\n    stop timers[0];\n    timers[0] = repeat Tick();\n}\n",
+		},
+		{
+			name: "namespaced enum",
+			src:  "enum DB::Mode\n{\n    DB::Off,\n    DB::On\n};\n",
+		},
+		{
+			name: "macro-qualified command",
+			src:  "ACMD:[1]goto(playerid, params[])\n{\n    return 1;\n}\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := Parse([]byte(tt.src))
+			mustNotBeBroken(t, f, tt.src)
+			if f.Root.HasError {
+				t.Fatalf("syntax pattern produced an erroneous CST:\n%s", tt.src)
+			}
+			assertNoRawOrErrorNode(t, f.Root, tt.src)
+		})
+	}
+}
+
+func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
+	t.Helper()
+	if node.Kind == KindRaw || node.HasError {
+		t.Fatalf("unexpected %s/error node for %q", node.Kind, node.Text([]byte(src)))
+	}
+	for _, child := range node.Children {
+		assertNoRawOrErrorNode(t, child, src)
+	}
+}
+
 func TestMacroQualifierFunctionPattern(t *testing.T) {
 	t.Parallel()
 	src := "ac_fpublic ac_DoThing(playerid)\n{\n    return playerid;\n}\n"

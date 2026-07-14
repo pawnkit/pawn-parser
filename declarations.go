@@ -91,10 +91,39 @@ func (p *parser) collectQualifiers() []*Node {
 		quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
 	}
 
-	if p.at(token.Identifier) && p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.LParen {
+	if p.macroFunctionQualifierStart() {
 		quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
 	}
 	return quals
+}
+
+func (p *parser) macroFunctionQualifierStart() bool {
+	if !p.at(token.Identifier) || (!isFunctionNameToken(p.peek(1).Kind)) {
+		return false
+	}
+	i := 2
+	for p.peek(i).Kind == token.LBracket {
+		depth := 0
+		for {
+			switch p.peek(i).Kind {
+			case token.LBracket:
+				depth++
+			case token.RBracket:
+				depth--
+			case token.EOF:
+				return false
+			}
+			i++
+			if depth == 0 {
+				break
+			}
+		}
+	}
+	return p.peek(i).Kind == token.LParen
+}
+
+func isFunctionNameToken(kind token.Kind) bool {
+	return kind == token.Identifier || isKeywordToken(kind)
 }
 
 func (p *parser) peekIsFunctionDecl() bool {
@@ -110,10 +139,11 @@ func (p *parser) peekIsFunctionDecl() bool {
 		}
 		return p.at(token.LParen)
 	}
-	if !p.at(token.Identifier) {
+	if !isFunctionNameToken(p.cur().Kind) {
 		return false
 	}
 	p.advance()
+	p.parseDimensions()
 	return p.at(token.LParen)
 }
 
@@ -142,5 +172,9 @@ func (p *parser) parseFunctionName() *Node {
 		name.HasError = true
 		return name
 	}
-	return p.newLeaf(KindIdentifier, p.advance())
+	name := p.newLeaf(KindIdentifier, p.advance())
+	if !isFunctionNameToken(name.Tok.Kind) {
+		name.HasError = true
+	}
+	return name
 }

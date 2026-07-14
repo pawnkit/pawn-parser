@@ -103,6 +103,14 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 	return nil
 }
 
+func (p *parser) parseQualifiedIdentifier() *Node {
+	name := p.newLeaf(KindIdentifier, p.advance())
+	for p.at(token.ColonColon) {
+		name = p.parseMemberSelection(name)
+	}
+	return name
+}
+
 func (p *parser) rememberTag(name string) {
 	if p.knownTags == nil {
 		p.knownTags = make(map[string]struct{})

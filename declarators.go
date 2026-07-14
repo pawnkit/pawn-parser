@@ -80,6 +80,11 @@ func (p *parser) parseDeclarator() *Node {
 	if len(dims) > 0 {
 		setField(node, "array", dims[0])
 	}
+	if p.at(token.Lt) {
+		selector := p.parseStateSelector()
+		setField(node, "capacity", selector)
+		node.addChild(selector)
+	}
 
 	if p.at(token.Assign) {
 		p.advance()
@@ -113,7 +118,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 	}
 
 	if p.at(token.Identifier) {
-		name := p.newLeaf(KindIdentifier, p.advance())
+		name := p.parseQualifiedIdentifier()
 		setField(node, "name", name)
 		node.addChild(name)
 	}
@@ -216,7 +221,7 @@ func (p *parser) parseEnumEntry() *Node {
 		}
 		return node
 	}
-	name := p.newLeaf(KindIdentifier, p.advance())
+	name := p.parseQualifiedIdentifier()
 	setField(node, "name", name)
 	node.addChild(name)
 	node.End = name.End

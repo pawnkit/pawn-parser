@@ -84,6 +84,7 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	tag := p.parseOptionalTagPrefix()
 	callingConvention := p.parseDimensions()
 	name := p.parseFunctionName()
+	nameDimensions := p.parseDimensions()
 
 	params := p.parseParameterList()
 
@@ -115,6 +116,10 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	setField(node, "calling_convention", firstOrNil(callingConvention))
 	setField(node, "name", name)
 	node.addChild(name)
+	for _, dimension := range nameDimensions {
+		node.addChild(dimension)
+	}
+	setField(node, "dimensions", firstOrNil(nameDimensions))
 	setField(node, "parameters", params)
 	node.addChild(params)
 	if stateSel != nil {
