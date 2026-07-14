@@ -647,6 +647,63 @@ func TestMacroCallAmbiguitiesKeepExpressionShape(t *testing.T) {
 	}
 }
 
+func TestQualifiedAndGeneratedDeclarationsParseCleanly(t *testing.T) {
+	t.Parallel()
+	src := "const DBStatement:DB::INVALID_STATEMENT = DBStatement:-1;\n" +
+		"forward DB::funcinc();\n" +
+		"forward bool:db_set_synchronous(DB:db, DB::e_SYNCHRONOUS_MODE:value);\n" +
+		"@test(.group = \"example\") TestFunction() {}\n" +
+		"hook function SetPlayerHealth(playerid, Float:health) {}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("qualified/generated declarations produced an erroneous CST:\n%s", src)
+	}
+	assertNoRawOrErrorNode(t, f.Root, src)
+
+	variableName := f.Root.Children[0].Children[1].Field("name")
+	if variableName == nil || variableName.Text([]byte(src)) != "DB::INVALID_STATEMENT" {
+		t.Fatalf("expected a qualified declarator name, got %+v", variableName)
+	}
+	functionName := f.Root.Children[1].Field("name")
+	if functionName == nil || functionName.Text([]byte(src)) != "DB::funcinc" {
+		t.Fatalf("expected a qualified function name, got %+v", functionName)
+	}
+	qualifiedTag := f.Root.Children[2].Field("parameters").Children[1].Field("tag")
+	if qualifiedTag == nil || qualifiedTag.Text([]byte(src)) != "DB::e_SYNCHRONOUS_MODE:" {
+		t.Fatalf("expected a qualified parameter tag, got %+v", qualifiedTag)
+	}
+	annotation := f.Root.Children[3].Children[0]
+	if annotation.Kind != KindCallExpression || annotation.Text([]byte(src)) != "@test(.group = \"example\")" {
+		t.Fatalf("expected a structured annotation qualifier, got %+v", annotation)
+	}
+}
+
+func TestExpressionExtensionShapesAndRanges(t *testing.T) {
+	t.Parallel()
+	src := "main()\n{\n    defer Work(a, 5000);\n    if ((length + extra) char > limit) {}\n" +
+		"    new Float:null, Float:z;\n    PlayerLoop(i)if (condition) action();\n}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("expression extensions produced an erroneous CST:\n%s", src)
+	}
+	assertNoRawOrErrorNode(t, f.Root, src)
+
+	body := f.Root.Children[0].Field("body")
+	prefix := body.Children[0].Field("expression")
+	if prefix.Text([]byte(src)) != "defer Work(a, 5000)" {
+		t.Fatalf("prefix operator range omitted source text: %q", prefix.Text([]byte(src)))
+	}
+	condition := body.Children[1].Field("condition").Field("expression")
+	left := condition.Field("left")
+	if left == nil || left.Kind != KindUnaryExpression || left.Text([]byte(src)) != "(length + extra) char" {
+		t.Fatalf("expected a postfix word expression, got %+v", left)
+	}
+	macroBlock := body.Children[3]
+	if macroBlock.Kind != KindMacroInvocationBlock || macroBlock.Field("body").Kind != KindIfStatement {
+		t.Fatalf("expected a macro invocation controlling an if statement, got %+v", macroBlock)
+	}
+}
+
 func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
 	t.Helper()
 	if node.Kind == KindRaw || node.HasError {

@@ -60,6 +60,16 @@ func (p *parser) skipAngleStateSelector() {
 }
 
 func (p *parser) parseOptionalTagPrefix() *Node {
+	if p.qualifiedTagPrefixStart() {
+		name := p.parseQualifiedIdentifier()
+		p.rememberTag(name.Text(p.source))
+		colon := p.advance()
+		node := &Node{Kind: KindTaggedType, Start: name.Start, End: colon.End.Offset, Leading: name.Leading, Trailing: colon.TrailingTrivia}
+		node.addChild(name)
+		node.End = colon.End.Offset
+		node.Trailing = colon.TrailingTrivia
+		return node
+	}
 	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon {
 		tagTok := p.advance()
 		p.rememberTag(tagTok.Text(p.source))
@@ -101,6 +111,17 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		return node
 	}
 	return nil
+}
+
+func (p *parser) qualifiedTagPrefixStart() bool {
+	if !p.at(token.Identifier) || p.peek(1).Kind != token.ColonColon {
+		return false
+	}
+	i := 1
+	for p.peek(i).Kind == token.ColonColon && p.peek(i+1).Kind == token.Identifier {
+		i += 2
+	}
+	return p.peek(i).Kind == token.Colon
 }
 
 func (p *parser) parseQualifiedIdentifier() *Node {

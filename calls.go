@@ -20,6 +20,14 @@ func (p *parser) parsePostfix() *Node {
 			setField(node, "expression", expr)
 			node.Tok = opTok
 			expr = node
+		case token.Identifier:
+			opTok := p.advance()
+			node := p.newNode(KindUnaryExpression, expr)
+			setField(node, "expression", expr)
+			node.Tok = opTok
+			node.End = opTok.End.Offset
+			node.Trailing = opTok.TrailingTrivia
+			expr = node
 		default:
 			return expr
 		}

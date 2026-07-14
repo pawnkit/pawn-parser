@@ -75,7 +75,7 @@ func (p *parser) parseParameterQualifiers(node *Node) {
 }
 
 func (p *parser) parseParameterName(node *Node) bool {
-	if !p.at(token.Identifier) {
+	if !isFunctionNameToken(p.cur().Kind) {
 		node.HasError = true
 		if !p.atEnd() && p.cur().Kind != token.Comma && p.cur().Kind != token.RParen {
 			bad := p.advance()

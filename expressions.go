@@ -156,6 +156,8 @@ func (p *parser) parseUnary() *Node {
 		node := p.newNode(KindUnaryExpression, operand)
 		setField(node, "expression", operand)
 		node.Tok = opTok
+		node.Start = opTok.Start.Offset
+		node.Leading = opTok.LeadingTrivia
 		return node
 	}
 	if isUnaryOp(p.cur().Kind) {
@@ -164,6 +166,8 @@ func (p *parser) parseUnary() *Node {
 		node := p.newNode(KindUnaryExpression, operand)
 		setField(node, "expression", operand)
 		node.Tok = opTok
+		node.Start = opTok.Start.Offset
+		node.Leading = opTok.LeadingTrivia
 		return node
 	}
 	if p.at(token.KwSizeof) {

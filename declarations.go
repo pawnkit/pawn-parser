@@ -89,6 +89,8 @@ func (p *parser) collectQualifiers() []*Node {
 	var quals []*Node
 	for {
 		switch {
+		case p.annotationQualifierStart():
+			quals = append(quals, p.parseAnnotationQualifier())
 		case slices.Contains(qualifierKinds, p.cur().Kind):
 			quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
 		case p.macroFunctionQualifierStart():
@@ -99,6 +101,22 @@ func (p *parser) collectQualifiers() []*Node {
 	}
 }
 
+func (p *parser) parseAnnotationQualifier() *Node {
+	name := p.newLeaf(KindIdentifier, p.advance())
+	return p.parseCall(name)
+}
+
+func (p *parser) annotationQualifierStart() bool {
+	if !p.at(token.Identifier) || p.peek(1).Kind != token.LParen || p.cur().Text(p.source)[0] != '@' {
+		return false
+	}
+	saved := p.pos
+	defer func() { p.pos = saved }()
+	p.advance()
+	p.parseArgumentList()
+	return p.peekIsFunctionDecl() || p.macroFunctionQualifierStart()
+}
+
 func (p *parser) macroFunctionQualifierStart() bool {
 	if !p.at(token.Identifier) {
 		return false
@@ -106,10 +124,22 @@ func (p *parser) macroFunctionQualifierStart() bool {
 	saved := p.pos
 	defer func() { p.pos = saved }()
 	p.advance()
+	for p.at(token.ColonColon) && p.peek(1).Kind == token.Identifier {
+		p.advance()
+		p.advance()
+	}
 	for slices.Contains(qualifierKinds, p.cur().Kind) {
 		p.advance()
 	}
-	return p.peekIsFunctionDecl()
+	for {
+		if p.peekIsFunctionDecl() {
+			return true
+		}
+		if !p.at(token.Identifier) {
+			return false
+		}
+		p.advance()
+	}
 }
 
 func isFunctionNameToken(kind token.Kind) bool {
@@ -133,6 +163,10 @@ func (p *parser) peekIsFunctionDecl() bool {
 		return false
 	}
 	p.advance()
+	for p.at(token.ColonColon) && p.peek(1).Kind == token.Identifier {
+		p.advance()
+		p.advance()
+	}
 	p.parseDimensions()
 	if p.at(token.Lt) {
 		p.parseStateSelector()
@@ -165,8 +199,9 @@ func (p *parser) parseFunctionName() *Node {
 		name.HasError = true
 		return name
 	}
-	name := p.newLeaf(KindIdentifier, p.advance())
-	if !isFunctionNameToken(name.Tok.Kind) {
+	validName := isFunctionNameToken(p.cur().Kind)
+	name := p.parseQualifiedIdentifier()
+	if !validName {
 		name.HasError = true
 	}
 	return name

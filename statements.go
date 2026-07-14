@@ -105,9 +105,18 @@ func isMacroInvocationBlockStart(p *parser) bool {
 			depth--
 			if depth == 0 {
 				next := p.peek(i + 1).Kind
-				return next == token.LBrace || iteratorArgument && next != token.Hash && next != token.Semicolon
+				return canStartMacroControlledStatement(next) || iteratorArgument && next != token.Hash && next != token.Semicolon
 			}
 		}
+	}
+}
+
+func canStartMacroControlledStatement(kind token.Kind) bool {
+	switch kind {
+	case token.LBrace, token.KwIf, token.KwWhile, token.KwDo, token.KwFor, token.KwSwitch:
+		return true
+	default:
+		return false
 	}
 }
 
