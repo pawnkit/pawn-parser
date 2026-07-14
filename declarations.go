@@ -112,6 +112,8 @@ func (p *parser) macroFunctionQualifierStart() bool {
 				depth--
 			case token.EOF:
 				return false
+			default:
+				// Tokens inside the dimension do not affect bracket depth.
 			}
 			i++
 			if depth == 0 {
