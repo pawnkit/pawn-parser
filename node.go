@@ -1,6 +1,11 @@
 package parser
 
-import "github.com/pawnkit/pawn-parser/token"
+import (
+	"strconv"
+	"strings"
+
+	"github.com/pawnkit/pawn-parser/token"
+)
 
 // Node is a single element of the concrete syntax tree produced by Parse.
 type Node struct {
@@ -15,6 +20,11 @@ type Node struct {
 
 	HasError bool
 	Raw      []byte
+
+	ErrorMessage  string
+	ErrorOffset   int
+	ErrorFound    token.Kind
+	ErrorExpected []token.Kind
 
 	MissingSemi bool
 
@@ -157,6 +167,29 @@ func clampRange(source []byte, start, end int) (int, int) {
 func rawNode(source []byte, start, end int) *Node {
 	start, end = clampRange(source, start, end)
 	return &Node{Kind: KindRaw, Start: start, End: end, HasError: true, Raw: source[start:end]}
+}
+
+func recoveryNode(source []byte, start, end int, found token.Token, context string, expected []token.Kind) *Node {
+	n := rawNode(source, start, end)
+	n.ErrorOffset = found.Start.Offset
+	n.ErrorFound = found.Kind
+	n.ErrorExpected = append([]token.Kind(nil), expected...)
+	foundText := strconv.Quote(found.Text(source))
+	if found.Kind == token.EOF {
+		foundText = "end of file"
+	}
+	n.ErrorMessage = "unexpected " + foundText
+	if context != "" {
+		n.ErrorMessage += " while parsing " + context
+	}
+	if len(expected) > 0 {
+		formatted := make([]string, len(expected))
+		for i, kind := range expected {
+			formatted[i] = strconv.Quote(kind.String())
+		}
+		n.ErrorMessage += "; expected " + strings.Join(formatted, " or ")
+	}
+	return n
 }
 
 func directiveSpan(source []byte, kind Kind, start, end int, leading, trailing []token.Trivia) *Node {

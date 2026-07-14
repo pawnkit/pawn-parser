@@ -134,9 +134,10 @@ func (p *parser) advance() token.Token {
 	return t
 }
 
-func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
+func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
 	start := p.cur().Start.Offset
 	startIdx := p.pos
+	found := p.cur()
 	depth := 0
 	var live []bool
 	liveFalseCount := 0
@@ -159,11 +160,11 @@ func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 				p.advance()
 				continue
 			}
-			if preserveSemicolon {
-				return p.stuckBoundary(start, startIdx)
+			if grammar.preserveRecoverySemicolon {
+				return p.stuckBoundary(start, startIdx, found, grammar)
 			}
 			last := p.advance()
-			return rawNode(p.source, start, last.End.Offset)
+			return recoveryNode(p.source, start, last.End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
 		case token.RBrace, token.RParen, token.RBracket:
 			if depth > 0 {
 				if counting {
@@ -172,13 +173,13 @@ func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 				p.advance()
 				continue
 			}
-			return p.stuckBoundary(start, startIdx)
+			return p.stuckBoundary(start, startIdx, found, grammar)
 		case token.Hash:
 			if depth > 0 {
 				p.advance()
 				continue
 			}
-			return p.stuckBoundary(start, startIdx)
+			return p.stuckBoundary(start, startIdx, found, grammar)
 		default:
 			p.advance()
 		}
@@ -187,7 +188,7 @@ func (p *parser) recoverStuckItem(preserveSemicolon bool) *Node {
 		p.broken = true
 		return nil
 	}
-	return rawNode(p.source, start, p.toks[len(p.toks)-1].End.Offset)
+	return recoveryNode(p.source, start, p.toks[len(p.toks)-1].End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
 }
 
 func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
@@ -212,11 +213,11 @@ func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool
 	return live, liveFalseCount
 }
 
-func (p *parser) stuckBoundary(start, startIdx int) *Node {
+func (p *parser) stuckBoundary(start, startIdx int, found token.Token, grammar itemGrammar) *Node {
 	if p.pos == startIdx {
 		p.broken = true
 		last := p.advance()
-		return rawNode(p.source, start, last.End.Offset)
+		return recoveryNode(p.source, start, last.End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
 	}
-	return rawNode(p.source, start, p.toks[p.pos-1].End.Offset)
+	return recoveryNode(p.source, start, p.toks[p.pos-1].End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
 }

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -765,6 +766,50 @@ func TestContinuedStringConcatWithMacroFragments(t *testing.T) {
 	}
 	if len(concat.Children) != 4 || concat.Children[1].Kind != KindIdentifier || concat.Children[1].Text([]byte(src)) != "SQL_FORMAT" {
 		t.Fatalf("expected a structured macro fragment in the string concat, got %+v", concat.Children)
+	}
+}
+
+func TestRecoveryNodesCarryLocalizedDiagnostics(t *testing.T) {
+	t.Parallel()
+	src := "new Float:ArmourOffsets[300][9]=\n{\n" +
+		"    0.107633, 1.0} // 0\n" +
+		"    0.078493, 1.1} // 1\n" +
+		"    0.063315, 1.2} // 2\n}\n"
+	f := Parse([]byte(src))
+	if !f.Root.HasError {
+		t.Fatal("malformed array must retain parse errors")
+	}
+
+	var recovery []*Node
+	var visit func(*Node)
+	visit = func(node *Node) {
+		if node.Kind == KindRaw && node.HasError {
+			recovery = append(recovery, node)
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(f.Root)
+	if len(recovery) != 5 {
+		t.Fatalf("expected five localized recovery nodes, got %d", len(recovery))
+	}
+
+	first := recovery[0]
+	wantOffset := strings.Index(src, "0.078493")
+	if first.ErrorOffset != wantOffset || first.ErrorFound != token.FloatLiteral {
+		t.Fatalf("unexpected recovery anchor: offset=%d found=%s", first.ErrorOffset, first.ErrorFound)
+	}
+	if first.ErrorMessage != "unexpected \"0.078493\" while parsing declarator; expected \",\" or \";\"" {
+		t.Fatalf("unexpected recovery message: %q", first.ErrorMessage)
+	}
+	if !slices.Equal(first.ErrorExpected, []token.Kind{token.Comma, token.Semicolon}) {
+		t.Fatalf("unexpected recovery expectation: %v", first.ErrorExpected)
+	}
+	for _, node := range recovery {
+		if node.ErrorMessage == "" || node.ErrorOffset < node.Start || node.ErrorOffset > node.End {
+			t.Fatalf("recovery node lacks a localized diagnostic: %+v", node)
+		}
 	}
 }
 

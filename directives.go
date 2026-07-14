@@ -7,6 +7,8 @@ type itemGrammar struct {
 	stop                      func(p *parser) bool
 	preserveRecoverySemicolon bool
 	parseUnknownHashAsItem    bool
+	recoveryContext           string
+	recoveryExpected          []token.Kind
 }
 
 func lastTokenEndsLine(t token.Token) bool {
@@ -155,7 +157,7 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			item = g.parseItem(p)
 		}
 		if p.pos == startPos {
-			if recovered := p.recoverStuckItem(g.preserveRecoverySemicolon); recovered != nil {
+			if recovered := p.recoverStuckItem(g); recovered != nil {
 				items = append(items, recovered)
 			}
 			continue
@@ -274,6 +276,8 @@ func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.
 	items := p.parseItemSequence(itemGrammar{
 		parseItem:              parseCommaListItem(parseItem),
 		parseUnknownHashAsItem: true,
+		recoveryContext:        "list item",
+		recoveryExpected:       []token.Kind{token.Comma, closeTok},
 		stop: func(p *parser) bool {
 			p.abortIfSharedAcrossBranch()
 			return p.at(closeTok)

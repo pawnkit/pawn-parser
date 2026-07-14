@@ -3,8 +3,9 @@ package parser
 func (p *parser) parseSourceFile() *Node {
 	root := &Node{Kind: KindSourceFile}
 	items := p.parseItemSequence(itemGrammar{
-		parseItem: func(p *parser) *Node { return p.parseDeclaration() },
-		stop:      func(p *parser) bool { return p.atEnd() },
+		parseItem:       func(p *parser) *Node { return p.parseDeclaration() },
+		stop:            func(p *parser) bool { return p.atEnd() },
+		recoveryContext: "declaration",
 	})
 	for _, it := range items {
 		root.addChild(it)

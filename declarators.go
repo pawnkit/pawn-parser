@@ -41,6 +41,8 @@ func (p *parser) parseDeclaratorList() []*Node {
 		parseItem:                 parseCommaListItem((*parser).parseDeclarator),
 		stop:                      func(p *parser) bool { return p.at(token.Semicolon) },
 		preserveRecoverySemicolon: true,
+		recoveryContext:           "declarator",
+		recoveryExpected:          []token.Kind{token.Comma, token.Semicolon},
 	})
 }
 

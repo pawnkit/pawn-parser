@@ -150,7 +150,9 @@ func (p *parser) parseBlock() *Node {
 	lb := p.advance() // '{'
 	node := &Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia}
 	items := p.parseItemSequence(itemGrammar{
-		parseItem: func(p *parser) *Node { return p.parseStatement() },
+		parseItem:        func(p *parser) *Node { return p.parseStatement() },
+		recoveryContext:  "statement",
+		recoveryExpected: []token.Kind{token.Semicolon, token.RBrace},
 		stop: func(p *parser) bool {
 			p.abortIfSharedAcrossBranch()
 			return p.at(token.RBrace)
