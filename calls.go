@@ -12,7 +12,7 @@ func (p *parser) parsePostfix() *Node {
 			expr = p.parseSubscript(expr)
 		case token.LBrace:
 			expr = p.parseCellSelection(expr)
-		case token.Dot:
+		case token.Dot, token.ColonColon:
 			expr = p.parseMemberSelection(expr)
 		case token.PlusPlus, token.MinusMinus:
 			opTok := p.advance()
@@ -44,6 +44,12 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 
 func (p *parser) parseMemberSelection(target *Node) *Node {
 	op := p.advance()
+	if !p.at(token.Identifier) && !p.at(token.MacroParam) {
+		node := p.newNode(KindBinaryExpression, target)
+		node.Tok = op
+		node.HasError = true
+		return node
+	}
 	member := p.newLeaf(KindIdentifier, p.advance())
 	node := p.newNode(KindBinaryExpression, target, member)
 	setField(node, "left", target)

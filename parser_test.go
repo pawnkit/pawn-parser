@@ -3,6 +3,8 @@ package parser
 import (
 	"strings"
 	"testing"
+
+	"github.com/pawnkit/pawn-parser/token"
 )
 
 func mustNotBeBroken(t *testing.T, f *File, src string) {
@@ -501,6 +503,48 @@ func TestMacroStatementMissingFinalSemicolonKeepsStructure(t *testing.T) {
 	returned := value.Field("value")
 	if returned == nil || returned.Kind != KindIdentifier || returned.Text([]byte(src)) != "x" {
 		t.Fatalf("expected the returned identifier x, got %+v", returned)
+	}
+}
+
+func TestDoubleColonMacroInvocationIsCallExpression(t *testing.T) {
+	t.Parallel()
+	src := "#define callcmd::%0(%1) target_%0(%1)\n\nmain()\n{\n    return callcmd::target(1, 2);\n}\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.HasError {
+		t.Fatal("double-colon macro invocation must parse cleanly")
+	}
+
+	fn := f.Root.Children[1]
+	ret := fn.Field("body").Children[0]
+	call := ret.Field("value")
+	if call == nil || call.Kind != KindCallExpression || call.Text([]byte(src)) != "callcmd::target(1, 2)" {
+		t.Fatalf("expected one call expression for the macro invocation, got %+v", call)
+	}
+	callee := call.Field("function")
+	if callee == nil || callee.Kind != KindBinaryExpression || callee.Tok.Kind != token.ColonColon || callee.Text([]byte(src)) != "callcmd::target" {
+		t.Fatalf("expected a double-colon callee, got %+v", callee)
+	}
+	if left, right := callee.Field("left"), callee.Field("right"); left == nil || right == nil || left.Text([]byte(src)) != "callcmd" || right.Text([]byte(src)) != "target" {
+		t.Fatalf("expected callcmd and target operands, got left=%+v right=%+v", left, right)
+	}
+}
+
+func TestUnbracedCommandAliasWithDoubleColonCall(t *testing.T) {
+	t.Parallel()
+	src := "CMD:alias(playerid, params[])\n    return callcmd::target(playerid, params);\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.Root.HasError || len(f.Root.Children) != 1 {
+		t.Fatalf("command alias must remain one clean declaration, got %+v", f.Root.Children)
+	}
+	fn := f.Root.Children[0]
+	if fn.Kind != KindFunctionDefinition || fn.Text([]byte(src)) != strings.TrimSuffix(src, "\n") {
+		t.Fatalf("expected one complete function definition, got %+v", fn)
+	}
+	ret := fn.Field("body")
+	if ret == nil || ret.Kind != KindReturnStatement || ret.Field("value").Kind != KindCallExpression {
+		t.Fatalf("expected a call-returning unbraced body, got %+v", ret)
 	}
 }
 
