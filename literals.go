@@ -44,6 +44,9 @@ func (p *parser) isStringPartStart() bool {
 	if p.at(token.StringLiteral) || p.at(token.PackedString) {
 		return true
 	}
+	if p.at(token.Identifier) || p.at(token.MacroParam) || isKeywordToken(p.cur().Kind) {
+		return true
+	}
 	return p.at(token.Hash) && p.peek(1).Kind == token.Identifier
 }
 
@@ -52,6 +55,9 @@ func (p *parser) parseStringPart() *Node {
 		return p.parseStringizeExpression()
 	}
 	tok := p.advance()
+	if tok.Kind == token.Identifier || tok.Kind == token.MacroParam || isKeywordToken(tok.Kind) {
+		return p.newLeaf(KindIdentifier, tok)
+	}
 	return p.newLeaf(KindLiteral, tok)
 }
 

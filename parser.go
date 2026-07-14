@@ -90,7 +90,7 @@ func (p *parser) allocNode() *Node {
 }
 
 func (p *parser) missingSemiOK() bool {
-	return p.allowMissingTrailingSemi && p.atEnd()
+	return p.at(token.RBrace) || p.allowMissingTrailingSemi && p.atEnd()
 }
 
 func (p *parser) abortIfSharedAcrossBranch() {

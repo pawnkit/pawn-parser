@@ -736,6 +736,38 @@ func TestRemainingExpressionMacroForms(t *testing.T) {
 	}
 }
 
+func TestClosingBraceTerminatesStatementWithoutSemicolon(t *testing.T) {
+	t.Parallel()
+	src := "stock Example()\n{\n    return value\n}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("brace-terminated return produced an erroneous CST:\n%s", src)
+	}
+	ret := f.Root.Children[0].Field("body").Children[0]
+	if ret.Kind != KindReturnStatement || !ret.MissingSemi || ret.Text([]byte(src)) != "return value" {
+		t.Fatalf("expected a clean return with a missing-semicolon marker, got %+v", ret)
+	}
+}
+
+func TestContinuedStringConcatWithMacroFragments(t *testing.T) {
+	t.Parallel()
+	src := "main()\n{\n    Query(\"SELECT '\"SQL_FORMAT\"' ... \" \\\n" +
+		"        \"WHERE value = %d\", value);\n}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("continued macro string produced an erroneous CST:\n%s", src)
+	}
+	stmt := f.Root.Children[0].Field("body").Children[0]
+	call := stmt.Field("expression")
+	concat := call.Field("arguments").Children[0]
+	if concat.Kind != KindStringConcat || concat.Text([]byte(src)) != "\"SELECT '\"SQL_FORMAT\"' ... \" \\\n        \"WHERE value = %d\"" {
+		t.Fatalf("expected one complete string concatenation, got %s %q", concat.Kind, concat.Text([]byte(src)))
+	}
+	if len(concat.Children) != 4 || concat.Children[1].Kind != KindIdentifier || concat.Children[1].Text([]byte(src)) != "SQL_FORMAT" {
+		t.Fatalf("expected a structured macro fragment in the string concat, got %+v", concat.Children)
+	}
+}
+
 func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
 	t.Helper()
 	if node.Kind == KindRaw || node.HasError {
