@@ -84,8 +84,7 @@ func (p *parser) parseParameterName(node *Node) bool {
 		}
 		return false
 	}
-	nameTok := p.advance()
-	name := p.newLeaf(KindIdentifier, nameTok)
+	name := p.parseQualifiedIdentifier()
 	setField(node, "name", name)
 	node.addChild(name)
 	node.End = name.End

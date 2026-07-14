@@ -107,21 +107,17 @@ func (p *parser) parseCallArgument() *Node {
 }
 
 func (p *parser) parseArgumentList() *Node {
-	lp := p.advance() // '('
-	return p.parseBracketedList(KindArgumentList, lp, token.RParen, (*parser).parseCallArgument)
-}
-
-func (p *parser) parseMacroArgumentList() *Node {
 	lp := p.advance()
 	node := &Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia}
 	for !p.atEnd() && !p.at(token.RParen) {
 		startPos := p.pos
+		endPos := p.argumentEnd(startPos)
 		wasBroken := p.broken
 		arg := p.parseCallArgument()
-		if arg == nil || arg.HasError || p.broken || (!p.at(token.Comma) && !p.at(token.RParen)) {
+		if arg == nil || arg.HasError || p.broken || p.pos != endPos {
 			p.pos = startPos
 			p.broken = wasBroken
-			arg = p.consumeStructuredMacroArgument()
+			arg = p.consumeStructuredMacroArgument(endPos)
 		}
 		node.addChild(arg)
 		if p.at(token.Comma) {
@@ -139,16 +135,66 @@ func (p *parser) parseMacroArgumentList() *Node {
 	return node
 }
 
-func (p *parser) consumeStructuredMacroArgument() *Node {
+func (p *parser) argumentEnd(start int) int {
+	parenDepth, bracketDepth, braceDepth, angleDepth := 0, 0, 0, 0
+	for i := start; i < len(p.toks); i++ {
+		kind := p.toks[i].Kind
+		if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
+			(kind == token.Comma || kind == token.RParen || kind == token.EOF) {
+			return i
+		}
+		switch kind {
+		case token.LParen:
+			parenDepth++
+		case token.RParen:
+			parenDepth--
+		case token.LBracket:
+			bracketDepth++
+		case token.RBracket:
+			bracketDepth--
+		case token.LBrace:
+			braceDepth++
+		case token.RBrace:
+			braceDepth--
+		case token.Lt:
+			if p.hasAngleClose(i) {
+				angleDepth++
+			}
+		case token.Gt:
+			if angleDepth > 0 {
+				angleDepth--
+			}
+		default:
+		}
+	}
+	return len(p.toks) - 1
+}
+
+func (p *parser) hasAngleClose(start int) bool {
+	depth := 1
+	for i := start + 1; i < len(p.toks); i++ {
+		switch p.toks[i].Kind {
+		case token.Lt:
+			depth++
+		case token.Gt:
+			depth--
+			if depth == 0 {
+				return true
+			}
+		case token.RParen, token.Semicolon, token.EOF:
+			return false
+		default:
+		}
+	}
+	return false
+}
+
+func (p *parser) consumeStructuredMacroArgument(endPos int) *Node {
 	start := p.cur()
 	last := start
-	var depth macroArgumentDepth
 	var parts []*Node
-	for !p.atEnd() {
+	for p.pos < endPos {
 		kind := p.cur().Kind
-		if depth.atTop() && (kind == token.RParen || kind == token.Comma) {
-			break
-		}
 		last = p.advance()
 		switch {
 		case kind == token.Identifier || kind == token.MacroParam || isKeywordToken(kind):
@@ -156,7 +202,6 @@ func (p *parser) consumeStructuredMacroArgument() *Node {
 		case isLiteralToken(kind):
 			parts = append(parts, p.newLeaf(KindLiteral, last))
 		}
-		depth.consume(kind)
 	}
 	node := directiveSpan(p.source, KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)
 	node.Children = parts
@@ -169,41 +214,6 @@ func isLiteralToken(kind token.Kind) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-type macroArgumentDepth struct {
-	paren   int
-	bracket int
-	brace   int
-	angle   int
-}
-
-func (d macroArgumentDepth) atTop() bool {
-	return d.paren == 0 && d.bracket == 0 && d.brace == 0 && d.angle == 0
-}
-
-func (d *macroArgumentDepth) consume(kind token.Kind) {
-	switch kind {
-	case token.LParen:
-		d.paren++
-	case token.RParen:
-		d.paren--
-	case token.LBracket:
-		d.bracket++
-	case token.RBracket:
-		d.bracket--
-	case token.LBrace:
-		d.brace++
-	case token.RBrace:
-		d.brace--
-	case token.Lt:
-		d.angle++
-	case token.Gt:
-		if d.angle > 0 {
-			d.angle--
-		}
-	default:
 	}
 }
 

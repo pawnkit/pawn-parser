@@ -4,6 +4,10 @@ import "github.com/pawnkit/pawn-parser/token"
 
 func (p *parser) parsePrimary() *Node {
 	tok := p.cur()
+	if isKeywordToken(tok.Kind) && p.peek(1).Kind == token.LParen {
+		p.advance()
+		return p.newLeaf(KindIdentifier, tok)
+	}
 	switch tok.Kind {
 	case token.Identifier, token.MacroParam:
 		p.advance()

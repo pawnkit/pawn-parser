@@ -45,7 +45,7 @@ func (p *parser) parseStatement() *Node {
 		}
 		return p.parseSingleDirective()
 	default:
-		if p.macroFunctionQualifierStart() {
+		if p.macroFunctionDefinitionStart() {
 			return p.parseFunctionLike(p.collectQualifiers())
 		}
 		if isLabelStart(p) {
@@ -60,6 +60,29 @@ func (p *parser) parseStatement() *Node {
 
 func isLabelStart(p *parser) bool {
 	return p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon && p.peek(2).Kind != token.Colon
+}
+
+func (p *parser) macroFunctionDefinitionStart() bool {
+	if !p.macroFunctionQualifierStart() {
+		return false
+	}
+	depth := 0
+	foundParams := false
+	for i := 1; ; i++ {
+		switch p.peek(i).Kind {
+		case token.LParen:
+			depth++
+			foundParams = true
+		case token.RParen:
+			depth--
+			if foundParams && depth == 0 {
+				return p.peek(i+1).Kind == token.LBrace
+			}
+		case token.EOF, token.Semicolon:
+			return false
+		default:
+		}
+	}
 }
 
 func isMacroInvocationBlockStart(p *parser) bool {
@@ -91,7 +114,7 @@ func isMacroInvocationBlockStart(p *parser) bool {
 func (p *parser) parseMacroInvocationBlock() *Node {
 	nameTok := p.advance()
 	name := p.newLeaf(KindIdentifier, nameTok)
-	args := p.parseMacroArgumentList()
+	args := p.parseArgumentList()
 	body := p.parseControlledStatement()
 	node := p.newNode(KindMacroInvocationBlock, name, args, body)
 	setField(node, "function", name)

@@ -617,6 +617,36 @@ func TestAdditionalGenericSyntaxPatternsParseCleanly(t *testing.T) {
 	}
 }
 
+func TestMacroCallAmbiguitiesKeepExpressionShape(t *testing.T) {
+	t.Parallel()
+	src := "main()\n{\n    defer Work(a, 5000);\n    Use(_T<S,H,O,U>);\n    return continue(a, b);\n}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("macro call ambiguities produced an erroneous CST:\n%s", src)
+	}
+
+	body := f.Root.Children[0].Field("body")
+	deferred := body.Children[0]
+	if deferred.Kind != KindExpressionStatement || deferred.Field("expression").Kind != KindUnaryExpression {
+		t.Fatalf("expected a prefixed call expression, got %+v", deferred)
+	}
+	operand := deferred.Field("expression").Field("expression")
+	if operand == nil || operand.Kind != KindCallExpression || operand.Text([]byte(src)) != "Work(a, 5000)" {
+		t.Fatalf("expected Work call as prefix operand, got %+v", operand)
+	}
+
+	genericCall := body.Children[1].Field("expression")
+	args := genericCall.Field("arguments")
+	if len(args.Children) != 1 || args.Children[0].Kind != KindMacroBody || args.Children[0].Text([]byte(src)) != "_T<S,H,O,U>" {
+		t.Fatalf("expected one structured generic argument, got %+v", args.Children)
+	}
+
+	keywordCall := body.Children[2].Field("value")
+	if keywordCall == nil || keywordCall.Kind != KindCallExpression || keywordCall.Field("function").Kind != KindIdentifier {
+		t.Fatalf("expected a keyword-named call expression, got %+v", keywordCall)
+	}
+}
+
 func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
 	t.Helper()
 	if node.Kind == KindRaw || node.HasError {
