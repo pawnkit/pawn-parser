@@ -87,41 +87,29 @@ func (p *parser) canStartDeclarator() bool {
 
 func (p *parser) collectQualifiers() []*Node {
 	var quals []*Node
-	for slices.Contains(qualifierKinds, p.cur().Kind) {
-		quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
+	for {
+		switch {
+		case slices.Contains(qualifierKinds, p.cur().Kind):
+			quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
+		case p.macroFunctionQualifierStart():
+			quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
+		default:
+			return quals
+		}
 	}
-
-	if p.macroFunctionQualifierStart() {
-		quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
-	}
-	return quals
 }
 
 func (p *parser) macroFunctionQualifierStart() bool {
-	if !p.at(token.Identifier) || (!isFunctionNameToken(p.peek(1).Kind)) {
+	if !p.at(token.Identifier) {
 		return false
 	}
-	i := 2
-	for p.peek(i).Kind == token.LBracket {
-		depth := 0
-		for {
-			switch p.peek(i).Kind {
-			case token.LBracket:
-				depth++
-			case token.RBracket:
-				depth--
-			case token.EOF:
-				return false
-			default:
-				// Tokens inside the dimension do not affect bracket depth.
-			}
-			i++
-			if depth == 0 {
-				break
-			}
-		}
+	saved := p.pos
+	defer func() { p.pos = saved }()
+	p.advance()
+	for slices.Contains(qualifierKinds, p.cur().Kind) {
+		p.advance()
 	}
-	return p.peek(i).Kind == token.LParen
+	return p.peekIsFunctionDecl()
 }
 
 func isFunctionNameToken(kind token.Kind) bool {
@@ -146,6 +134,9 @@ func (p *parser) peekIsFunctionDecl() bool {
 	}
 	p.advance()
 	p.parseDimensions()
+	if p.at(token.Lt) {
+		p.parseStateSelector()
+	}
 	return p.at(token.LParen)
 }
 

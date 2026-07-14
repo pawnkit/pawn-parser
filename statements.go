@@ -91,7 +91,7 @@ func isMacroInvocationBlockStart(p *parser) bool {
 func (p *parser) parseMacroInvocationBlock() *Node {
 	nameTok := p.advance()
 	name := p.newLeaf(KindIdentifier, nameTok)
-	args := p.parseArgumentList()
+	args := p.parseMacroArgumentList()
 	body := p.parseControlledStatement()
 	node := p.newNode(KindMacroInvocationBlock, name, args, body)
 	setField(node, "function", name)

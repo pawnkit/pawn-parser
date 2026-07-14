@@ -46,28 +46,20 @@ func (s *scanner) scanNumber(start token.Position) rawToken {
 	if s.peek() == '0' && (s.peekAt(1) == 'x' || s.peekAt(1) == 'X') {
 		s.advance()
 		s.advance()
-		for isHexDigit(s.peek()) {
-			s.advance()
-		}
+		s.scanDigitsWithSeparators(isHexDigit)
 		return rawToken{kind: token.IntLiteral, start: start, end: s.here()}
 	}
 	if s.peek() == '0' && (s.peekAt(1) == 'b' || s.peekAt(1) == 'B') {
 		s.advance()
 		s.advance()
-		for s.peek() == '0' || s.peek() == '1' {
-			s.advance()
-		}
+		s.scanDigitsWithSeparators(func(c byte) bool { return c == '0' || c == '1' })
 		return rawToken{kind: token.IntLiteral, start: start, end: s.here()}
 	}
-	for isDigit(s.peek()) {
-		s.advance()
-	}
+	s.scanDigitsWithSeparators(isDigit)
 	if s.peek() == '.' && isDigit(s.peekAt(1)) {
 		isFloat = true
 		s.advance()
-		for isDigit(s.peek()) {
-			s.advance()
-		}
+		s.scanDigitsWithSeparators(isDigit)
 	}
 	if s.peek() == 'e' || s.peek() == 'E' {
 		la := 1
@@ -79,15 +71,19 @@ func (s *scanner) scanNumber(start token.Position) rawToken {
 			for range la {
 				s.advance()
 			}
-			for isDigit(s.peek()) {
-				s.advance()
-			}
+			s.scanDigitsWithSeparators(isDigit)
 		}
 	}
 	if isFloat {
 		return rawToken{kind: token.FloatLiteral, start: start, end: s.here()}
 	}
 	return rawToken{kind: token.IntLiteral, start: start, end: s.here()}
+}
+
+func (s *scanner) scanDigitsWithSeparators(validDigit func(byte) bool) {
+	for validDigit(s.peek()) || s.peek() == '_' && validDigit(s.peekAt(1)) {
+		s.advance()
+	}
 }
 
 func isHexDigit(c byte) bool {

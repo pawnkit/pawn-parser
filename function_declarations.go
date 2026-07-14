@@ -85,6 +85,10 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	callingConvention := p.parseDimensions()
 	name := p.parseFunctionName()
 	nameDimensions := p.parseDimensions()
+	var generic *Node
+	if p.at(token.Lt) {
+		generic = p.parseStateSelector()
+	}
 
 	params := p.parseParameterList()
 
@@ -120,6 +124,10 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 		node.addChild(dimension)
 	}
 	setField(node, "dimensions", firstOrNil(nameDimensions))
+	if generic != nil {
+		setField(node, "generic", generic)
+		node.addChild(generic)
+	}
 	setField(node, "parameters", params)
 	node.addChild(params)
 	if stateSel != nil {

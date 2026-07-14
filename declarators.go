@@ -124,11 +124,15 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 	}
 
 	var tag *Node
-	if p.at(token.Colon) && p.peek(1).Kind == token.Identifier {
+	switch {
+	case p.at(token.Colon) && p.peek(1).Kind == token.LBrace:
+		colon := p.advance()
+		tag = directiveSpan(p.source, KindTaggedType, colon.Start.Offset, colon.End.Offset, colon.LeadingTrivia, colon.TrailingTrivia)
+	case p.at(token.Colon) && p.peek(1).Kind == token.Identifier:
 		colon := p.advance()
 		tag = p.newLeaf(KindTaggedType, p.advance())
 		tag.Start = colon.Start.Offset
-	} else {
+	default:
 		tag = p.parseOptionalTagPrefix()
 	}
 	if tag != nil {

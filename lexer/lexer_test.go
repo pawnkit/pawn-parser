@@ -63,6 +63,9 @@ func TestNumbers(t *testing.T) {
 	assertKinds(t, "1e+5", token.FloatLiteral, token.EOF)
 	assertKinds(t, ".5", token.FloatLiteral, token.EOF)
 	assertKinds(t, "1e", token.IntLiteral, token.Identifier, token.EOF)
+	assertKinds(t, "100_000", token.IntLiteral, token.EOF)
+	assertKinds(t, "0xFF_FF", token.IntLiteral, token.EOF)
+	assertKinds(t, "0b1010_0101", token.IntLiteral, token.EOF)
 }
 
 func TestStringsAndChars(t *testing.T) {

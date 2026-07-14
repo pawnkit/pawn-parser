@@ -103,6 +103,11 @@ func (p *parser) parseParameterSuffix(node *Node) {
 	if len(dims) > 0 {
 		setField(node, "array", dims[0])
 	}
+	if p.at(token.Lt) {
+		generic := p.parseStateSelector()
+		setField(node, "generic", generic)
+		node.addChild(generic)
+	}
 
 	if p.at(token.Assign) {
 		p.advance()

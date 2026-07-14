@@ -111,6 +111,102 @@ func (p *parser) parseArgumentList() *Node {
 	return p.parseBracketedList(KindArgumentList, lp, token.RParen, (*parser).parseCallArgument)
 }
 
+func (p *parser) parseMacroArgumentList() *Node {
+	lp := p.advance()
+	node := &Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia}
+	for !p.atEnd() && !p.at(token.RParen) {
+		startPos := p.pos
+		wasBroken := p.broken
+		arg := p.parseCallArgument()
+		if arg == nil || arg.HasError || p.broken || (!p.at(token.Comma) && !p.at(token.RParen)) {
+			p.pos = startPos
+			p.broken = wasBroken
+			arg = p.consumeStructuredMacroArgument()
+		}
+		node.addChild(arg)
+		if p.at(token.Comma) {
+			comma := p.advance()
+			mergeCommaTrivia(arg, comma)
+		}
+	}
+	if p.at(token.RParen) {
+		rp := p.advance()
+		node.End = rp.End.Offset
+		node.Trailing = rp.TrailingTrivia
+	} else {
+		node.HasError = true
+	}
+	return node
+}
+
+func (p *parser) consumeStructuredMacroArgument() *Node {
+	start := p.cur()
+	last := start
+	var depth macroArgumentDepth
+	var parts []*Node
+	for !p.atEnd() {
+		kind := p.cur().Kind
+		if depth.atTop() && (kind == token.RParen || kind == token.Comma) {
+			break
+		}
+		last = p.advance()
+		switch {
+		case kind == token.Identifier || kind == token.MacroParam || isKeywordToken(kind):
+			parts = append(parts, p.newLeaf(KindIdentifier, last))
+		case isLiteralToken(kind):
+			parts = append(parts, p.newLeaf(KindLiteral, last))
+		}
+		depth.consume(kind)
+	}
+	node := directiveSpan(p.source, KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)
+	node.Children = parts
+	return node
+}
+
+func isLiteralToken(kind token.Kind) bool {
+	switch kind {
+	case token.IntLiteral, token.FloatLiteral, token.CharLiteral, token.StringLiteral, token.PackedString:
+		return true
+	default:
+		return false
+	}
+}
+
+type macroArgumentDepth struct {
+	paren   int
+	bracket int
+	brace   int
+	angle   int
+}
+
+func (d macroArgumentDepth) atTop() bool {
+	return d.paren == 0 && d.bracket == 0 && d.brace == 0 && d.angle == 0
+}
+
+func (d *macroArgumentDepth) consume(kind token.Kind) {
+	switch kind {
+	case token.LParen:
+		d.paren++
+	case token.RParen:
+		d.paren--
+	case token.LBracket:
+		d.bracket++
+	case token.RBracket:
+		d.bracket--
+	case token.LBrace:
+		d.brace++
+	case token.RBrace:
+		d.brace--
+	case token.Lt:
+		d.angle++
+	case token.Gt:
+		if d.angle > 0 {
+			d.angle--
+		}
+	default:
+	}
+}
+
 func (p *parser) parseSubscript(target *Node) *Node {
 	p.advance()
 	var index *Node

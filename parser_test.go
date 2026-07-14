@@ -590,6 +590,33 @@ func TestRealWorldMacroSyntaxPatternsParseCleanly(t *testing.T) {
 	}
 }
 
+func TestAdditionalGenericSyntaxPatternsParseCleanly(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{name: "qualified inline function", src: "main() { inline const Callback() {} }\n"},
+		{name: "tagged enum", src: "enum DBDataType: { TYPE_NONE };\n"},
+		{name: "parameter generic suffixes", src: "stock First(Func:response<dddd>) {}\nstock Second(const format[], va_args<>) {}\n"},
+		{name: "generic function declaration", src: "FormatSpecifier<'m'>(output[], amount) {}\n"},
+		{name: "structured macro argument", src: "main() { MAP_foreach(k => v : map) {} }\n"},
+		{name: "generic structured macro argument", src: "main() { APPLY(_T<S,H,O,U>) {} }\n"},
+		{name: "numeric separator expression", src: "main() { if (100_000 > value) {} }\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := Parse([]byte(tt.src))
+			if f.Broken || f.Root.HasError {
+				t.Fatalf("syntax pattern produced an erroneous CST:\n%s", tt.src)
+			}
+			assertNoRawOrErrorNode(t, f.Root, tt.src)
+		})
+	}
+}
+
 func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
 	t.Helper()
 	if node.Kind == KindRaw || node.HasError {
