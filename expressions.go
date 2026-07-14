@@ -182,15 +182,7 @@ func (p *parser) parseUnary() *Node {
 }
 
 func (p *parser) isMacroUnaryOperator() bool {
-	if !p.at(token.Identifier) || p.peek(1).Kind != token.Identifier {
-		return false
-	}
-	switch p.cur().Text(p.source) {
-	case "defer", "repeat", "stop":
-		return true
-	default:
-		return false
-	}
+	return p.at(token.Identifier) && p.peek(1).Kind == token.Identifier
 }
 
 func isTagCastStart(p *parser) bool {
