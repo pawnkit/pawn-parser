@@ -704,6 +704,38 @@ func TestExpressionExtensionShapesAndRanges(t *testing.T) {
 	}
 }
 
+func TestRemainingExpressionMacroForms(t *testing.T) {
+	t.Parallel()
+	src := "main()\n{\n    if (tag == tagof(DBDataType:)) {}\n" +
+		"    continue(playerid, weaponid, ammo);\n" +
+		"    if (clickedid == LISTITEM<items[playerid]>) {}\n" +
+		"    return (t_VARTYPE:GetPVarType(playerid, \"name\") != t_VARTYPE:0);\n}\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError {
+		t.Fatalf("expression macro forms produced an erroneous CST:\n%s", src)
+	}
+	assertNoRawOrErrorNode(t, f.Root, src)
+
+	body := f.Root.Children[0].Field("body")
+	tagof := body.Children[0].Field("condition").Field("expression").Field("right")
+	emptyTag := tagof.Field("expression")
+	if emptyTag == nil || emptyTag.Kind != KindTaggedExpression || emptyTag.Field("expression") != nil || emptyTag.Text([]byte(src)) != "DBDataType:" {
+		t.Fatalf("expected an empty tagged expression, got %+v", emptyTag)
+	}
+	keywordCall := body.Children[1].Field("expression")
+	if keywordCall == nil || keywordCall.Kind != KindCallExpression || keywordCall.Field("function").Text([]byte(src)) != "continue" {
+		t.Fatalf("expected a keyword-named call statement, got %+v", keywordCall)
+	}
+	selection := body.Children[2].Field("condition").Field("expression").Field("right")
+	if selection == nil || selection.Kind != KindMacroBody || selection.Text([]byte(src)) != "LISTITEM<items[playerid]>" {
+		t.Fatalf("expected an opaque postfix selection, got %+v", selection)
+	}
+	comparison := body.Children[3].Field("value").Field("expression")
+	if comparison.Field("left").Kind != KindTaggedExpression || comparison.Field("right").Kind != KindTaggedExpression {
+		t.Fatalf("expected structurally detected tag casts, got %+v", comparison)
+	}
+}
+
 func assertNoRawOrErrorNode(t *testing.T, node *Node, src string) {
 	t.Helper()
 	if node.Kind == KindRaw || node.HasError {

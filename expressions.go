@@ -93,10 +93,7 @@ func (p *parser) parseTernary() *Node {
 	}
 	p.advance()
 	savedSuppressTagCast := p.suppressTagCast
-	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon &&
-		!p.knowsTag(p.cur().Text(p.source)) && p.peek(2).Kind != token.LParen {
-		p.suppressTagCast = true
-	}
+	p.suppressTagCast = true
 	consequence := p.parseAssignment()
 	p.suppressTagCast = savedSuppressTagCast
 	if !p.at(token.Colon) {
@@ -190,33 +187,23 @@ func (p *parser) isMacroUnaryOperator() bool {
 }
 
 func isTagCastStart(p *parser) bool {
-	if p.suppressTagCast {
+	if p.cur().Kind != token.Identifier || p.peek(1).Kind != token.Colon {
 		return false
 	}
-	if p.cur().Kind != token.Identifier {
-		return false
-	}
-	if p.peek(1).Kind != token.Colon {
-		return false
-	}
-	name := p.cur().Text(p.source)
-	return p.knowsTag(name) || looksLikeTagName(name)
-}
-
-func looksLikeTagName(name string) bool {
-	if name == "_" || name == "bool" {
-		return true
-	}
-	if len(name) == 0 {
-		return false
-	}
-	return name[0] >= 'A' && name[0] <= 'Z'
+	return !p.suppressTagCast || p.knowsTag(p.cur().Text(p.source))
 }
 
 func (p *parser) parseTaggedExpression() *Node {
 	tagTok := p.advance()
 	tag := p.newLeaf(KindIdentifier, tagTok)
-	p.advance()
+	colon := p.advance()
+	if p.at(token.RParen) || p.at(token.Comma) || p.at(token.Semicolon) {
+		node := p.newNode(KindTaggedExpression, tag)
+		setField(node, "tag", tag)
+		node.End = colon.End.Offset
+		node.Trailing = colon.TrailingTrivia
+		return node
+	}
 	operand := p.parseUnary()
 	node := p.newNode(KindTaggedExpression, tag, operand)
 	setField(node, "tag", tag)

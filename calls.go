@@ -28,10 +28,42 @@ func (p *parser) parsePostfix() *Node {
 			node.End = opTok.End.Offset
 			node.Trailing = opTok.TrailingTrivia
 			expr = node
+		case token.Lt:
+			if expr.End != p.cur().Start.Offset || !p.hasAngleClose(p.pos) {
+				return expr
+			}
+			expr = p.parseMacroPostfixSelection(expr)
 		default:
 			return expr
 		}
 	}
+}
+
+func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
+	lt := p.advance()
+	children := []*Node{target}
+	depth := 1
+	last := lt
+	for !p.atEnd() && depth > 0 {
+		tok := p.advance()
+		last = tok
+		switch tok.Kind {
+		case token.Lt:
+			depth++
+		case token.Gt:
+			depth--
+		case token.Identifier, token.MacroParam:
+			children = append(children, p.newLeaf(KindIdentifier, tok))
+		case token.IntLiteral, token.FloatLiteral, token.CharLiteral, token.StringLiteral, token.PackedString:
+			children = append(children, p.newLeaf(KindLiteral, tok))
+		default:
+		}
+	}
+	node := directiveSpan(p.source, KindMacroBody, target.Start, last.End.Offset, target.Leading, last.TrailingTrivia)
+	node.Tok = lt
+	node.Children = children
+	setField(node, "target", target)
+	return node
 }
 
 func (p *parser) parseCellSelection(target *Node) *Node {

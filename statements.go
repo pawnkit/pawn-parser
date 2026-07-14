@@ -11,6 +11,10 @@ func (p *parser) parseStatement() *Node {
 	}
 	defer p.exitDepth()
 
+	if isKeywordToken(p.cur().Kind) && p.peek(1).Kind == token.LParen && !nativeParenthesizedStatement(p.cur().Kind) {
+		return p.parseExpressionStatement()
+	}
+
 	switch p.cur().Kind {
 	case token.LBrace:
 		return p.parseBlock()
@@ -55,6 +59,16 @@ func (p *parser) parseStatement() *Node {
 			return p.parseMacroInvocationBlock()
 		}
 		return p.parseExpressionStatement()
+	}
+}
+
+func nativeParenthesizedStatement(kind token.Kind) bool {
+	switch kind {
+	case token.KwIf, token.KwWhile, token.KwFor, token.KwSwitch, token.KwReturn,
+		token.KwNew, token.KwStatic, token.KwConst:
+		return true
+	default:
+		return false
 	}
 }
 
