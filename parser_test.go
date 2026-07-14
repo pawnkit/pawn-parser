@@ -478,14 +478,29 @@ func TestTernaryTrueBranchStartsWithTagCast(t *testing.T) {
 	}
 }
 
-func TestMacroMissingFinalSemicolonStaysRaw(t *testing.T) {
+func TestMacroNestedMissingFinalSemicolonStaysOpaque(t *testing.T) {
 	t.Parallel()
 	src := "#define IF_ELSE_WRAP(%0) if (%0) return 1; else return 0\n"
 	f := Parse([]byte(src))
 	mustNotBeBroken(t, f, src)
 	value := f.Root.Children[0].Field("value")
-	if value == nil || value.Kind != KindRaw || value.HasError {
+	if value == nil || value.Kind != KindMacroBody || value.HasError {
 		t.Fatalf("unsafe-to-rebrace macro value must be clean raw text, got %+v", value)
+	}
+}
+
+func TestMacroStatementMissingFinalSemicolonKeepsStructure(t *testing.T) {
+	t.Parallel()
+	src := "#define RETURN_ERR(x) return x\nmain() {}\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	value := f.Root.Children[0].Field("value")
+	if value == nil || value.Kind != KindReturnStatement || value.HasError || !value.MissingSemi {
+		t.Fatalf("expected a structured return statement with an elided semicolon, got %+v", value)
+	}
+	returned := value.Field("value")
+	if returned == nil || returned.Kind != KindIdentifier || returned.Text([]byte(src)) != "x" {
+		t.Fatalf("expected the returned identifier x, got %+v", returned)
 	}
 }
 
