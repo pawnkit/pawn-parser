@@ -33,10 +33,33 @@ func (p *parser) parsePrimary() *Node {
 	case token.LBrace:
 		return p.parseArrayLiteral()
 	default:
+		if isExpressionBoundary(tok.Kind) {
+			p.emitMissing(DiagnosticMissingExpression, "expected expression",
+				token.Identifier, token.IntLiteral, token.LParen)
+			n := &Node{
+				Kind: KindLiteral, Tok: tok, Start: tok.Start.Offset, End: tok.Start.Offset, HasError: true,
+				Leading: tok.LeadingTrivia,
+			}
+			return n
+		}
 		p.advance()
 		n := p.newLeaf(KindLiteral, tok)
 		n.HasError = true
+		p.emitDiagnostic(Diagnostic{
+			Code:    DiagnosticUnexpectedToken,
+			Message: "unexpected token in expression", Range: tokenRange(tok), Found: tok,
+			Recovery: Recovery{Kind: RecoveryRemove, Range: tokenRange(tok), Confidence: RecoveryExact},
+		})
 		return n
+	}
+}
+
+func isExpressionBoundary(kind token.Kind) bool {
+	switch kind {
+	case token.EOF, token.RParen, token.RBracket, token.RBrace, token.Comma, token.Semicolon:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -97,6 +120,7 @@ func (p *parser) parseParenthesized() *Node {
 		node.Trailing = rp.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RParen, "parenthesized expression")
 	}
 	return node
 }

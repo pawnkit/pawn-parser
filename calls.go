@@ -78,6 +78,7 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 		node.Trailing = rb.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RBrace, "cell selection")
 	}
 	return node
 }
@@ -171,6 +172,7 @@ func (p *parser) parseArgumentList() *Node {
 		node.Trailing = rp.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RParen, "argument list")
 	}
 	return node
 }
@@ -272,6 +274,7 @@ func (p *parser) parseSubscript(target *Node) *Node {
 		node.Trailing = rb.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RBracket, "subscript")
 	}
 	return node
 }

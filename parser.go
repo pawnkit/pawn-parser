@@ -3,6 +3,9 @@
 package parser
 
 import (
+	"sort"
+	"strconv"
+
 	"github.com/pawnkit/pawn-parser/lexer"
 	"github.com/pawnkit/pawn-parser/token"
 )
@@ -14,12 +17,14 @@ type File struct {
 	Root   *Node
 
 	Broken bool
+
+	Diagnostics []Diagnostic
 }
 
-// HasParseErrors reports whether f is nil, has no root node, or was marked
-// broken during parsing.
+// HasParseErrors reports whether parsing produced a syntax diagnostic or an
+// unrecoverable/broken result.
 func (f *File) HasParseErrors() bool {
-	return f == nil || f.Root == nil || f.Broken
+	return f == nil || f.Root == nil || f.Broken || f.Root.HasError || len(f.Diagnostics) > 0
 }
 
 // Parse parses source into a File. Parse errors are reported via
@@ -42,7 +47,13 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 	}
 	p := &parser{source: source, toks: toks, arena: make([]Node, 0, len(source)/4+16)}
 	root := p.parseSourceFile()
-	return &File{Source: source, Tokens: toks, Root: root, Broken: p.broken}
+	sort.SliceStable(p.diagnostics, func(i, j int) bool {
+		if p.diagnostics[i].Range.Start != p.diagnostics[j].Range.Start {
+			return p.diagnostics[i].Range.Start < p.diagnostics[j].Range.Start
+		}
+		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
+	})
+	return &File{Source: source, Tokens: toks, Root: root, Broken: p.broken, Diagnostics: p.diagnostics}
 }
 
 type parser struct {
@@ -61,12 +72,27 @@ type parser struct {
 	knownTags       map[string]struct{}
 
 	arena []Node
+
+	diagnostics []Diagnostic
+	depthError  bool
 }
 
-const maxParseDepth = 1000
+const (
+	maxParseDepth  = 1000
+	maxDiagnostics = 1024
+)
 
 func (p *parser) enterDepth() bool {
 	p.depth++
+	if p.depth > maxParseDepth && !p.depthError {
+		p.depthError = true
+		found := p.cur()
+		p.emitDiagnostic(Diagnostic{
+			Code: DiagnosticMaximumDepth, Message: "maximum parse depth exceeded",
+			Range: tokenRange(found), Found: found,
+			Recovery: suggestedRecovery(tokenRange(found)),
+		})
+	}
 	return p.depth <= maxParseDepth
 }
 
@@ -134,6 +160,69 @@ func (p *parser) advance() token.Token {
 	return t
 }
 
+func tokenRange(tok token.Token) ByteRange {
+	return ByteRange{Start: tok.Start.Offset, End: tok.End.Offset}
+}
+
+func suggestedRecovery(r ByteRange) Recovery {
+	return Recovery{Kind: RecoveryNone, Range: r, Confidence: RecoverySuggested}
+}
+
+func (p *parser) emitDiagnostic(d Diagnostic) {
+	if len(p.diagnostics) >= maxDiagnostics {
+		return
+	}
+	d.Expected = append([]token.Kind(nil), d.Expected...)
+	p.diagnostics = append(p.diagnostics, d)
+}
+
+func (p *parser) emitMissingToken(expected token.Kind, context string) {
+	found := p.cur()
+	message := "expected " + strconv.Quote(expected.String())
+	if context != "" {
+		message += " to close " + context
+	}
+	p.emitDiagnostic(Diagnostic{
+		Code: DiagnosticMissingToken, Message: message,
+		Range: ByteRange{Start: found.Start.Offset, End: found.Start.Offset},
+		Found: found, Expected: []token.Kind{expected},
+		Recovery: Recovery{
+			Kind:        RecoveryInsert,
+			Range:       ByteRange{Start: found.Start.Offset, End: found.Start.Offset},
+			Replacement: expected.String(), Confidence: RecoveryExact,
+		},
+	})
+}
+
+func (p *parser) emitMissing(code DiagnosticCode, message string, expected ...token.Kind) {
+	found := p.cur()
+	r := ByteRange{Start: found.Start.Offset, End: found.Start.Offset}
+	p.emitDiagnostic(Diagnostic{
+		Code: code, Message: message, Range: r, Found: found,
+		Expected: expected, Recovery: suggestedRecovery(r),
+	})
+}
+
+func (p *parser) makeRecoveryNode(start, end int, found token.Token, grammar itemGrammar, exactRemove bool) *Node {
+	n := recoveryNode(p.source, start, end, found, grammar.recoveryContext, grammar.recoveryExpected)
+	foundRange := tokenRange(found)
+	code := DiagnosticUnexpectedToken
+	recovery := suggestedRecovery(foundRange)
+	if exactRemove {
+		code = DiagnosticUnexpectedDelimiter
+		recovery = Recovery{Kind: RecoveryRemove, Range: foundRange, Confidence: RecoveryExact}
+	}
+	message := n.ErrorMessage
+	if message == "" {
+		message = "unexpected " + strconv.Quote(found.Kind.String())
+	}
+	p.emitDiagnostic(Diagnostic{
+		Code: code, Message: message, Range: foundRange,
+		Found: found, Expected: grammar.recoveryExpected, Recovery: recovery,
+	})
+	return n
+}
+
 func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
 	start := p.cur().Start.Offset
 	startIdx := p.pos
@@ -164,7 +253,7 @@ func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
 				return p.stuckBoundary(start, startIdx, found, grammar)
 			}
 			last := p.advance()
-			return recoveryNode(p.source, start, last.End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
+			return p.makeRecoveryNode(start, last.End.Offset, found, grammar, false)
 		case token.RBrace, token.RParen, token.RBracket:
 			if depth > 0 {
 				if counting {
@@ -186,9 +275,14 @@ func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
 	}
 	if p.pos == startIdx {
 		p.broken = true
+		p.emitDiagnostic(Diagnostic{
+			Code:    DiagnosticUnrecoverable,
+			Message: "parser could not recover before end of file",
+			Range:   tokenRange(found), Found: found, Recovery: suggestedRecovery(tokenRange(found)),
+		})
 		return nil
 	}
-	return recoveryNode(p.source, start, p.toks[len(p.toks)-1].End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
+	return p.makeRecoveryNode(start, p.toks[len(p.toks)-1].End.Offset, found, grammar, false)
 }
 
 func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
@@ -217,7 +311,8 @@ func (p *parser) stuckBoundary(start, startIdx int, found token.Token, grammar i
 	if p.pos == startIdx {
 		p.broken = true
 		last := p.advance()
-		return recoveryNode(p.source, start, last.End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
+		exactRemove := found.Kind == token.RBrace || found.Kind == token.RParen || found.Kind == token.RBracket
+		return p.makeRecoveryNode(start, last.End.Offset, found, grammar, exactRemove)
 	}
-	return recoveryNode(p.source, start, p.toks[p.pos-1].End.Offset, found, grammar.recoveryContext, grammar.recoveryExpected)
+	return p.makeRecoveryNode(start, p.toks[p.pos-1].End.Offset, found, grammar, false)
 }

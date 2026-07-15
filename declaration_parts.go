@@ -165,6 +165,7 @@ func (p *parser) parseDimensions() []*Node {
 			dim.Trailing = rb.TrailingTrivia
 		} else {
 			dim.HasError = true
+			p.emitMissingToken(token.RBracket, "array dimension")
 		}
 		dims = append(dims, dim)
 	}

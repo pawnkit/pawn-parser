@@ -24,6 +24,9 @@ func FuzzParse(f *testing.F) {
 				t.Fatalf("panic on input %q: %v", src, r)
 			}
 		}()
-		Parse([]byte(src))
+		file := Parse([]byte(src))
+		if len(file.Diagnostics) > maxDiagnostics {
+			t.Fatalf("diagnostic collection exceeded bound: %d", len(file.Diagnostics))
+		}
 	})
 }

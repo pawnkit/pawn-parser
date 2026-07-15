@@ -292,6 +292,7 @@ func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.
 		node.Trailing = closeToken.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(closeTok, kind.String())
 	}
 	return node
 }

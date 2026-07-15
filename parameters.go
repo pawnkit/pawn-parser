@@ -4,6 +4,7 @@ import "github.com/pawnkit/pawn-parser/token"
 
 func (p *parser) parseParameterList() *Node {
 	if !p.at(token.LParen) {
+		p.emitMissingToken(token.LParen, "parameter list")
 		n := &Node{Kind: KindParameterList, HasError: true}
 		return n
 	}
@@ -25,6 +26,7 @@ func (p *parser) parseParameterList() *Node {
 		node.Trailing = rp.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RParen, "parameter list")
 	}
 	return node
 }
@@ -76,6 +78,7 @@ func (p *parser) parseParameterQualifiers(node *Node) {
 
 func (p *parser) parseParameterName(node *Node) bool {
 	if !isFunctionNameToken(p.cur().Kind) {
+		p.emitMissing(DiagnosticMissingIdentifier, "expected parameter name", token.Identifier)
 		node.HasError = true
 		if !p.atEnd() && p.cur().Kind != token.Comma && p.cur().Kind != token.RParen {
 			bad := p.advance()

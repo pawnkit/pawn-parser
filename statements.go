@@ -167,6 +167,7 @@ func (p *parser) parseBlock() *Node {
 		node.Trailing = rb.TrailingTrivia
 	} else {
 		node.HasError = true
+		p.emitMissingToken(token.RBrace, "block")
 		node.End = p.cur().Start.Offset
 	}
 	return node
@@ -215,6 +216,7 @@ func (p *parser) parseIfStatement() *Node {
 
 func (p *parser) parseParenCondition() *Node {
 	if !p.at(token.LParen) {
+		p.emitMissingToken(token.LParen, "condition")
 		n := &Node{Kind: KindParenthesizedExpression, HasError: true}
 		return n
 	}

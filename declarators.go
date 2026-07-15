@@ -58,6 +58,7 @@ func (p *parser) parseDeclarator() *Node {
 	}
 
 	if !isFunctionNameToken(p.cur().Kind) {
+		p.emitMissing(DiagnosticMissingIdentifier, "expected declarator name", token.Identifier)
 		node.HasError = true
 		return node
 	}
@@ -147,6 +148,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 	}
 
 	if !p.at(token.LBrace) {
+		p.emitMissing(DiagnosticMissingDeclaration, "expected enum body", token.LBrace)
 		node.HasError = true
 		return node
 	}
@@ -168,6 +170,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		body.Trailing = rb.TrailingTrivia
 	} else {
 		body.HasError = true
+		p.emitMissingToken(token.RBrace, "enum body")
 	}
 	setField(node, "body", body)
 	node.addChild(body)
@@ -218,6 +221,7 @@ func (p *parser) parseEnumEntry() *Node {
 	}
 
 	if !p.at(token.Identifier) {
+		p.emitMissing(DiagnosticMissingIdentifier, "expected enum entry name", token.Identifier)
 		node.HasError = true
 		if !p.atEnd() && p.cur().Kind != token.Comma && p.cur().Kind != token.RBrace {
 			bad := p.advance()
