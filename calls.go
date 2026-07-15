@@ -67,9 +67,10 @@ func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
 }
 
 func (p *parser) parseCellSelection(target *Node) *Node {
-	p.advance()
+	open := p.advance()
 	index := p.parseExpression()
 	node := p.newNode(KindSubscriptExpression, target, index)
+	node.Tok = open
 	setField(node, "array", target)
 	setField(node, "index", index)
 	if p.at(token.RBrace) {
@@ -267,12 +268,13 @@ func isLiteralToken(kind token.Kind) bool {
 }
 
 func (p *parser) parseSubscript(target *Node) *Node {
-	p.advance()
+	open := p.advance()
 	var index *Node
 	if !p.at(token.RBracket) {
 		index = p.parseExpression()
 	}
 	node := p.newNode(KindSubscriptExpression, target, index)
+	node.Tok = open
 	setField(node, "array", target)
 	setField(node, "index", index)
 	if p.at(token.RBracket) {

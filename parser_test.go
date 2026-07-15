@@ -54,6 +54,24 @@ func TestParseNamedCallArgument(t *testing.T) {
 	}
 }
 
+func TestSubscriptExpressionPreservesDelimiter(t *testing.T) {
+	t.Parallel()
+	src := "main() { values[index]; values{index}; }\n"
+	f := Parse([]byte(src))
+	if f.HasParseErrors() {
+		t.Fatalf("subscript expressions produced parse errors: %+v", f.Diagnostics)
+	}
+	body := f.Root.Children[0].Field("body")
+	cell := body.Children[0].Field("expression")
+	packed := body.Children[1].Field("expression")
+	if cell.Kind != KindSubscriptExpression || cell.Tok.Kind != token.LBracket {
+		t.Fatalf("cell subscript did not preserve '[': %+v", cell)
+	}
+	if packed.Kind != KindSubscriptExpression || packed.Tok.Kind != token.LBrace {
+		t.Fatalf("packed subscript did not preserve '{': %+v", packed)
+	}
+}
+
 func TestParseAdjacentStringConcat(t *testing.T) {
 	t.Parallel()
 	src := "stock const X[] = \"a\" \"b\" \"c\";\n"
