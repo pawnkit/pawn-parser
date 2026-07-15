@@ -131,6 +131,41 @@ func TestMaximumDepthProducesDiagnostic(t *testing.T) {
 	}
 }
 
+func TestKeywordQualifiedCallIsValid(t *testing.T) {
+	t.Parallel()
+	src := "main() { return callcmd::goto(playerid, params); }\n"
+	f := Parse([]byte(src))
+	if f.Broken || f.Root.HasError || f.HasParseErrors() || len(f.Diagnostics) != 0 {
+		t.Fatalf("valid keyword-qualified call produced errors: %+v", f.Diagnostics)
+	}
+	call := f.Root.Children[0].Field("body").Children[0].Field("value")
+	callee := call.Field("function")
+	member := callee.Field("right")
+	if callee.Kind != KindBinaryExpression || callee.Tok.Kind != token.ColonColon ||
+		member == nil || member.Kind != KindIdentifier || member.Tok.Kind != token.KwGoto {
+		t.Fatalf("keyword-qualified call has wrong CST shape: %+v", callee)
+	}
+}
+
+func TestMalformedQualifiedNameEmitsDiagnostic(t *testing.T) {
+	t.Parallel()
+	src := "main() { broken::; }\n"
+	f := Parse([]byte(src))
+	if f.Broken || !f.Root.HasError || !f.HasParseErrors() {
+		t.Fatalf("recoverable syntax error flags disagree: broken=%v root=%v diagnostics=%+v", f.Broken, f.Root.HasError, f.Diagnostics)
+	}
+	d := findDiagnostic(t, f.Diagnostics, DiagnosticMissingIdentifier)
+	want := strings.Index(src, ";")
+	if d.Range != (ByteRange{Start: want, End: want}) || d.Found.Kind != token.Semicolon {
+		t.Fatalf("malformed qualified name has wrong anchor: %+v", d)
+	}
+	if !slices.Equal(d.Expected, []token.Kind{token.Identifier}) ||
+		d.Recovery.Kind != RecoveryNone || d.Recovery.Confidence != RecoverySuggested {
+		t.Fatalf("malformed qualified name has wrong expectation/recovery: %+v", d)
+	}
+	assertErrorFrontiersDiagnosed(t, f.Root, f.Diagnostics)
+}
+
 func findDiagnostic(t *testing.T, diagnostics []Diagnostic, code DiagnosticCode) Diagnostic {
 	t.Helper()
 	if d := findDiagnosticOptional(diagnostics, code); d != nil {
@@ -168,4 +203,27 @@ func shiftToken(tok *token.Token, offset int) {
 		tok.TrailingTrivia[i].Start.Offset += offset
 		tok.TrailingTrivia[i].End.Offset += offset
 	}
+}
+
+func assertErrorFrontiersDiagnosed(t *testing.T, node *Node, diagnostics []Diagnostic) bool {
+	t.Helper()
+	if node == nil || !node.HasError {
+		return false
+	}
+	childHasError := false
+	for _, child := range node.Children {
+		if assertErrorFrontiersDiagnosed(t, child, diagnostics) {
+			childHasError = true
+		}
+	}
+	if !childHasError {
+		covered := false
+		for _, diagnostic := range diagnostics {
+			covered = covered || diagnostic.Range.Start >= node.Start && diagnostic.Range.Start <= node.End
+		}
+		if !covered {
+			t.Fatalf("error frontier has no structured diagnostic: %+v", node)
+		}
+	}
+	return true
 }

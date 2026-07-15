@@ -22,6 +22,8 @@ const (
 	DiagnosticMaximumDepth DiagnosticCode = "maximum_parse_depth"
 	// DiagnosticUnrecoverable reports that parsing could not make progress.
 	DiagnosticUnrecoverable DiagnosticCode = "unrecoverable_parse_failure"
+	// DiagnosticSyntaxError reports an error node without a more specific code.
+	DiagnosticSyntaxError DiagnosticCode = "syntax_error"
 )
 
 // ByteRange is a half-open source byte range.

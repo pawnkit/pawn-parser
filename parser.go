@@ -47,6 +47,7 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 	}
 	p := &parser{source: source, toks: toks, arena: make([]Node, 0, len(source)/4+16)}
 	root := p.parseSourceFile()
+	p.ensureErrorDiagnostics(root)
 	sort.SliceStable(p.diagnostics, func(i, j int) bool {
 		if p.diagnostics[i].Range.Start != p.diagnostics[j].Range.Start {
 			return p.diagnostics[i].Range.Start < p.diagnostics[j].Range.Start
@@ -174,6 +175,59 @@ func (p *parser) emitDiagnostic(d Diagnostic) {
 	}
 	d.Expected = append([]token.Kind(nil), d.Expected...)
 	p.diagnostics = append(p.diagnostics, d)
+}
+
+func (p *parser) ensureErrorDiagnostics(root *Node) {
+	var visit func(*Node) bool
+	visit = func(node *Node) bool {
+		if node == nil || !node.HasError {
+			return false
+		}
+		childHasError := false
+		for _, child := range node.Children {
+			if visit(child) {
+				childHasError = true
+			}
+		}
+		if !childHasError && !p.diagnosticCovers(node) {
+			found := p.tokenAtOffset(node.Start)
+			message := node.ErrorMessage
+			if message == "" {
+				message = "syntax error in " + node.Kind.String()
+			}
+			r := tokenRange(found)
+			p.emitDiagnostic(Diagnostic{
+				Code: DiagnosticSyntaxError, Message: message,
+				Range: r, Found: found, Expected: node.ErrorExpected, Recovery: suggestedRecovery(r),
+			})
+		}
+		return true
+	}
+	visit(root)
+}
+
+func (p *parser) diagnosticCovers(node *Node) bool {
+	for _, diagnostic := range p.diagnostics {
+		if diagnostic.Range.Start == diagnostic.Range.End {
+			if diagnostic.Range.Start >= node.Start && diagnostic.Range.Start <= node.End {
+				return true
+			}
+			continue
+		}
+		if diagnostic.Range.Start < node.End && diagnostic.Range.End > node.Start {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *parser) tokenAtOffset(offset int) token.Token {
+	for _, tok := range p.toks {
+		if tok.End.Offset >= offset {
+			return tok
+		}
+	}
+	return p.toks[len(p.toks)-1]
 }
 
 func (p *parser) emitMissingToken(expected token.Kind, context string) {

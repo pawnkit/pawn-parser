@@ -85,10 +85,17 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 
 func (p *parser) parseMemberSelection(target *Node) *Node {
 	op := p.advance()
-	if !p.at(token.Identifier) && !p.at(token.MacroParam) {
+	if !p.at(token.Identifier) && !p.at(token.MacroParam) && !isKeywordToken(p.cur().Kind) {
 		node := p.newNode(KindBinaryExpression, target)
 		node.Tok = op
+		node.End = op.End.Offset
+		node.Trailing = op.TrailingTrivia
 		node.HasError = true
+		node.ErrorMessage = "expected identifier after " + op.Kind.String()
+		node.ErrorOffset = p.cur().Start.Offset
+		node.ErrorFound = p.cur().Kind
+		node.ErrorExpected = []token.Kind{token.Identifier}
+		p.emitMissing(DiagnosticMissingIdentifier, node.ErrorMessage, token.Identifier)
 		return node
 	}
 	member := p.newLeaf(KindIdentifier, p.advance())
