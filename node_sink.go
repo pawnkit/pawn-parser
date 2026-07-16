@@ -56,6 +56,7 @@ type sinkMark struct {
 	edgeCount  int
 	fieldCount int
 	errors     int
+	nodeTrivia int
 	children   compactArenaMark
 	fields     compactArenaMark
 	trivia     nodeArenaMark
