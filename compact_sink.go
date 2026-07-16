@@ -3,10 +3,10 @@ package parser
 import "github.com/pawnkit/pawn-parser/token"
 
 type compactBuildNode struct {
-	fields   []compactBuildField
 	error    uint32
 	trivia   uint32
 	children uint32
+	fields   uint32
 }
 
 type compactBuildChildren struct {
@@ -32,6 +32,12 @@ type compactBuildField struct {
 	node uint32
 }
 
+type compactBuildFields struct {
+	inline [2]compactBuildField
+	count  uint32
+	spill  uint32
+}
+
 type compactBuilder struct {
 	nodes        []compactBuildNode
 	records      []CompactNode
@@ -44,6 +50,8 @@ type compactBuilder struct {
 	nodeTrivia   []compactBuildTrivia
 	nodeChildren []compactBuildChildren
 	childSpills  [][]uint32
+	nodeFields   []compactBuildFields
+	fieldSpills  [][]compactBuildField
 	retainTrivia bool
 }
 
@@ -147,6 +155,8 @@ func newCompactNodeSink(tokenCount int, retainTrivia bool) compactNodeSink {
 		nodeTrivia:   nodeTrivia,
 		nodeChildren: make([]compactBuildChildren, 1, tokenCount/3+64),
 		childSpills:  [][]uint32{nil},
+		nodeFields:   make([]compactBuildFields, 1, tokenCount/3+64),
+		fieldSpills:  [][]compactBuildField{nil},
 	}}
 }
 
@@ -268,6 +278,33 @@ func (s compactNodeSink) childItems(c *compactBuildChildren) []uint32 {
 		return c.inline[:c.count:c.count]
 	}
 	return s.builder.childSpills[c.spill]
+}
+
+func (s compactNodeSink) ensureFields(n uint32) *compactBuildFields {
+	node := s.node(n)
+	if node.fields == 0 {
+		node.fields = compactUint(len(s.builder.nodeFields))
+		s.builder.nodeFields = append(s.builder.nodeFields, compactBuildFields{})
+	}
+	return &s.builder.nodeFields[node.fields]
+}
+
+func (s compactNodeSink) fieldData(n uint32) *compactBuildFields {
+	id := s.node(n).fields
+	if id == 0 {
+		return nil
+	}
+	return &s.builder.nodeFields[id]
+}
+
+func (s compactNodeSink) fieldItems(data *compactBuildFields) []compactBuildField {
+	if data == nil || data.count == 0 {
+		return nil
+	}
+	if data.count <= uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+		return data.inline[:data.count:data.count]
+	}
+	return s.builder.fieldSpills[data.spill]
 }
 
 func (s compactNodeSink) Kind(n uint32) Kind           { return s.record(n).Kind }
@@ -414,7 +451,7 @@ func (s compactNodeSink) AddChild(n, child uint32) {
 }
 
 func (s compactNodeSink) Field(n uint32, id FieldID) uint32 {
-	for _, entry := range s.node(n).fields {
+	for _, entry := range s.fieldItems(s.fieldData(n)) {
 		if entry.id == id {
 			return entry.node
 		}
@@ -426,8 +463,21 @@ func (s compactNodeSink) SetField(n uint32, id FieldID, child uint32) {
 	if child == 0 {
 		return
 	}
-	node := s.node(n)
-	node.fields = s.builder.fields.append(node.fields, compactBuildField{id: id, node: child})
+	data := s.ensureFields(n)
+	entry := compactBuildField{id: id, node: child}
+	if data.count < uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+		data.inline[data.count] = entry
+	} else {
+		if data.count == uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+			spill := s.builder.fields.append(nil, data.inline[0])
+			spill = s.builder.fields.append(spill, data.inline[1])
+			data.spill = compactUint(len(s.builder.fieldSpills))
+			s.builder.fieldSpills = append(s.builder.fieldSpills, spill)
+		}
+		spill := s.builder.fieldSpills[data.spill]
+		s.builder.fieldSpills[data.spill] = s.builder.fields.append(spill, entry)
+	}
+	data.count++
 	s.builder.fieldCount++
 }
 
@@ -438,6 +488,8 @@ func (s compactNodeSink) Mark() sinkMark {
 		nodeTrivia:   len(s.builder.nodeTrivia),
 		nodeChildren: len(s.builder.nodeChildren),
 		childSpills:  len(s.builder.childSpills),
+		nodeFields:   len(s.builder.nodeFields),
+		fieldSpills:  len(s.builder.fieldSpills),
 		children:     s.builder.children.mark(), fields: s.builder.fields.mark(),
 		trivia: s.builder.trivia.mark(),
 	}
@@ -453,6 +505,8 @@ func (s compactNodeSink) Rewind(mark sinkMark) {
 	s.builder.nodeTrivia = s.builder.nodeTrivia[:mark.nodeTrivia]
 	s.builder.nodeChildren = s.builder.nodeChildren[:mark.nodeChildren]
 	s.builder.childSpills = s.builder.childSpills[:mark.childSpills]
+	s.builder.nodeFields = s.builder.nodeFields[:mark.nodeFields]
+	s.builder.fieldSpills = s.builder.fieldSpills[:mark.fieldSpills]
 	s.builder.children.rewind(mark.children)
 	s.builder.fields.rewind(mark.fields)
 	s.builder.trivia.rewind(mark.trivia)
@@ -481,7 +535,6 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 		if mapped == 0 {
 			continue
 		}
-		node := s.node(id)
 		index := mapped - 1
 		if index+1 != id {
 			tree.Nodes[index] = s.builder.records[id]
@@ -494,7 +547,7 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 		}
 
 		fieldStart := compactUint(fieldPos)
-		for _, entry := range node.fields {
+		for _, entry := range s.fieldItems(s.fieldData(id)) {
 			if entry.node >= compactUint(len(remap)) || remap[entry.node] == 0 {
 				continue
 			}
@@ -539,9 +592,8 @@ func (s compactNodeSink) reachableNodes(root uint32) ([]uint32, int, int, int) {
 		}
 		nodeCount++
 		remap[id] = compactUint(nodeCount)
-		node := s.node(id)
 		childCount += len(s.Children(id))
-		for _, field := range node.fields {
+		for _, field := range s.fieldItems(s.fieldData(id)) {
 			if field.node < compactUint(len(remap)) && remap[field.node] != 0 {
 				fieldCount++
 			}

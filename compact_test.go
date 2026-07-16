@@ -182,14 +182,25 @@ func TestCompactChildEventsInlineAndSpill(t *testing.T) {
 	if len(children) != 3 || children[0] != first || children[1] != second || children[2] != third {
 		t.Fatalf("spilled children = %v", children)
 	}
+	sink.SetField(parent, fieldLeft, first)
+	sink.SetField(parent, fieldRight, second)
+	if data := sink.fieldData(parent); data == nil || data.spill != 0 {
+		t.Fatal("two fields did not remain inline")
+	}
+	sink.SetField(parent, fieldValue, third)
+	if sink.Field(parent, fieldLeft) != first || sink.Field(parent, fieldRight) != second ||
+		sink.Field(parent, fieldValue) != third {
+		t.Fatal("spilled fields changed field lookup")
+	}
 
 	mark := sink.Mark()
 	speculative := sink.New(KindRaw)
 	sink.AddChild(speculative, sink.New(KindIdentifier))
 	sink.Rewind(mark)
 	if len(sink.builder.nodes) != mark.nodes || len(sink.builder.nodeChildren) != mark.nodeChildren ||
-		len(sink.builder.childSpills) != mark.childSpills {
-		t.Fatal("child event rewind retained speculative storage")
+		len(sink.builder.childSpills) != mark.childSpills || len(sink.builder.nodeFields) != mark.nodeFields ||
+		len(sink.builder.fieldSpills) != mark.fieldSpills {
+		t.Fatal("event rewind retained speculative storage")
 	}
 }
 

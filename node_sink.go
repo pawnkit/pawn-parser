@@ -59,6 +59,8 @@ type sinkMark struct {
 	nodeTrivia   int
 	nodeChildren int
 	childSpills  int
+	nodeFields   int
+	fieldSpills  int
 	children     compactArenaMark
 	fields       compactArenaMark
 	trivia       nodeArenaMark
