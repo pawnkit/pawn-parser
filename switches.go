@@ -6,7 +6,7 @@ func (p *parser) parseSwitchStatement() *Node {
 	kw := p.advance()
 	condition := p.parseParenCondition()
 	node := p.storeNode(Node{Kind: KindSwitchStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-	p.setField(node, "condition", condition)
+	p.setField(node, fieldCondition, condition)
 	p.addChild(node, condition)
 
 	if !p.at(token.LBrace) {
@@ -42,7 +42,7 @@ func (p *parser) parseSwitchClause() *Node {
 		values := p.parseCaseValueList()
 		p.suppressTagCast = wasSuppressed
 		node := p.storeNode(Node{Kind: KindCaseClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-		p.setField(node, "values", values)
+		p.setField(node, fieldValues, values)
 		p.addChild(node, values)
 		if p.at(token.Colon) {
 			p.advance()
@@ -50,7 +50,7 @@ func (p *parser) parseSwitchClause() *Node {
 			node.HasError = true
 		}
 		body := p.parseClauseBody()
-		p.setField(node, "body", body)
+		p.setField(node, fieldBody, body)
 		p.addChild(node, body)
 		return node
 	}
@@ -63,7 +63,7 @@ func (p *parser) parseSwitchClause() *Node {
 			node.HasError = true
 		}
 		body := p.parseClauseBody()
-		p.setField(node, "body", body)
+		p.setField(node, fieldBody, body)
 		p.addChild(node, body)
 		return node
 	}
@@ -105,8 +105,8 @@ func (p *parser) parseCaseValue() *Node {
 		p.advance()
 		end := p.parseTernary()
 		node := p.newNode(KindCaseRange, start, end)
-		p.setField(node, "start", start)
-		p.setField(node, "end", end)
+		p.setField(node, fieldStart, start)
+		p.setField(node, fieldEnd, end)
 		return node
 	}
 	return start

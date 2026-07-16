@@ -169,7 +169,7 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
 		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
-		p.setField(branch, "directive", directive)
+		p.setField(branch, fieldDirective, directive)
 		p.addChild(branch, directive)
 		p.addChild(region, branch)
 
@@ -194,7 +194,7 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 
 func conditionalNeedsSharedFallback(region *Node, source []byte) bool {
 	for _, branch := range region.Children {
-		directive := branch.Field("directive")
+		directive := branch.field(fieldDirective)
 		for _, item := range branch.Children {
 			if item == directive || item.Kind == KindConditionalRegion ||
 				item.Kind == KindSharedConditional || item.Kind == KindConditionalFunction {
@@ -204,7 +204,7 @@ func conditionalNeedsSharedFallback(region *Node, source []byte) bool {
 				return true
 			}
 			if item.Kind == KindIfStatement {
-				consequence := item.Field("consequence")
+				consequence := item.field(fieldConsequence)
 				if consequence != nil && consequence.Kind == KindEmptyStatement && consequence.Start == consequence.End {
 					return true
 				}
@@ -312,8 +312,8 @@ func (p *parser) finishSharedConditional(start int, leading []token.Trivia, last
 
 func (p *parser) newSharedConditional(prefix, body *Node) *Node {
 	node := p.newNode(KindSharedConditional, prefix, body)
-	p.setField(node, "prefix", prefix)
-	p.setField(node, "body", body)
+	p.setField(node, fieldPrefix, prefix)
+	p.setField(node, fieldBody, body)
 	p.parseSharedConditionalAlternative(node)
 	return node
 }
@@ -324,7 +324,7 @@ func (p *parser) parseSharedConditionalAlternative(node *Node) {
 	}
 	p.advance()
 	alternative := p.parseControlledStatement()
-	p.setField(node, "alternative", alternative)
+	p.setField(node, fieldAlternative, alternative)
 	p.addChild(node, alternative)
 }
 

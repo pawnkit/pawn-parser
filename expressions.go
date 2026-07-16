@@ -78,8 +78,8 @@ func (p *parser) parseAssignment() *Node {
 		opTok := p.advance()
 		right := p.parseAssignment()
 		node := p.newNode(KindAssignmentExpression, left, right)
-		p.setField(node, "left", left)
-		p.setField(node, "right", right)
+		p.setField(node, fieldLeft, left)
+		p.setField(node, fieldRight, right)
 		node.Tok = opTok
 		return node
 	}
@@ -104,9 +104,9 @@ func (p *parser) parseTernary() *Node {
 	p.advance()
 	alternative := p.parseAssignment()
 	node := p.newNode(KindTernaryExpression, cond, consequence, alternative)
-	p.setField(node, "condition", cond)
-	p.setField(node, "consequence", consequence)
-	p.setField(node, "alternative", alternative)
+	p.setField(node, fieldCondition, cond)
+	p.setField(node, fieldConsequence, consequence)
+	p.setField(node, fieldAlternative, alternative)
 	return node
 }
 
@@ -120,8 +120,8 @@ func (p *parser) parseBinary(minBP int) *Node {
 		opTok := p.advance()
 		right := p.parseBinary(bp + 1)
 		node := p.newNode(KindBinaryExpression, left, right)
-		p.setField(node, "left", left)
-		p.setField(node, "right", right)
+		p.setField(node, fieldLeft, left)
+		p.setField(node, fieldRight, right)
 		node.Tok = opTok
 		left = node
 	}
@@ -151,7 +151,7 @@ func (p *parser) parseUnary() *Node {
 		opTok := p.advance()
 		operand := p.parseUnary()
 		node := p.newNode(KindUnaryExpression, operand)
-		p.setField(node, "expression", operand)
+		p.setField(node, fieldExpression, operand)
 		node.Tok = opTok
 		node.Start = opTok.Start.Offset
 		node.Leading = opTok.LeadingTrivia
@@ -161,7 +161,7 @@ func (p *parser) parseUnary() *Node {
 		opTok := p.advance()
 		operand := p.parseUnary()
 		node := p.newNode(KindUnaryExpression, operand)
-		p.setField(node, "expression", operand)
+		p.setField(node, fieldExpression, operand)
 		node.Tok = opTok
 		node.Start = opTok.Start.Offset
 		node.Leading = opTok.LeadingTrivia
@@ -199,15 +199,15 @@ func (p *parser) parseTaggedExpression() *Node {
 	colon := p.advance()
 	if p.at(token.RParen) || p.at(token.Comma) || p.at(token.Semicolon) {
 		node := p.newNode(KindTaggedExpression, tag)
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		node.End = colon.End.Offset
 		node.Trailing = colon.TrailingTrivia
 		return node
 	}
 	operand := p.parseUnary()
 	node := p.newNode(KindTaggedExpression, tag, operand)
-	p.setField(node, "tag", tag)
-	p.setField(node, "expression", operand)
+	p.setField(node, fieldTag, tag)
+	p.setField(node, fieldExpression, operand)
 	return node
 }
 
@@ -217,7 +217,7 @@ func (p *parser) parseSizeofLike(kind Kind) *Node {
 		p.advance()
 		inner := p.parseExpression()
 		node := p.newNode(kind, inner)
-		p.setField(node, "expression", inner)
+		p.setField(node, fieldExpression, inner)
 		node.Tok = kwTok
 		node.Start = kwTok.Start.Offset
 		node.Leading = kwTok.LeadingTrivia
@@ -241,7 +241,7 @@ func (p *parser) parseSizeofLike(kind Kind) *Node {
 		operand = p.parseSubscript(operand)
 	}
 	node := p.newNode(kind, operand)
-	p.setField(node, "expression", operand)
+	p.setField(node, fieldExpression, operand)
 	node.Tok = kwTok
 	node.Start = kwTok.Start.Offset
 	node.Leading = kwTok.LeadingTrivia
@@ -254,7 +254,7 @@ func (p *parser) parseDefinedExpression() *Node {
 		if p.at(token.Identifier) {
 			name := p.newLeaf(KindIdentifier, p.advance())
 			node := p.newNode(KindDefinedExpression, name)
-			p.setField(node, "name", name)
+			p.setField(node, fieldName, name)
 			node.Tok = kwTok
 			return node
 		}
@@ -268,7 +268,7 @@ func (p *parser) parseDefinedExpression() *Node {
 		name = p.newLeaf(KindIdentifier, p.advance())
 	}
 	node := p.newNode(KindDefinedExpression, name)
-	p.setField(node, "name", name)
+	p.setField(node, fieldName, name)
 	node.Tok = kwTok
 	if p.at(token.RParen) {
 		rp := p.advance()

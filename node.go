@@ -33,7 +33,7 @@ type Node struct {
 }
 
 type fieldEntry struct {
-	name string
+	id   FieldID
 	node *Node
 }
 
@@ -48,16 +48,20 @@ func (n *Node) Field(name string) *Node {
 	if n == nil {
 		return nil
 	}
+	return n.field(lookupFieldID(name))
+}
+
+func (n *Node) field(id FieldID) *Node {
 	if n.fieldData == nil {
 		return nil
 	}
 	for _, f := range n.fieldData.inline[:min(n.fieldData.count, len(n.fieldData.inline))] {
-		if f.name == name {
+		if f.id == id {
 			return f.node
 		}
 	}
 	for _, f := range n.fieldData.spill {
-		if f.name == name {
+		if f.id == id {
 			return f.node
 		}
 	}
@@ -107,14 +111,14 @@ func (n *Node) OperatorTokenHasComment() bool {
 	return false
 }
 
-func (p *parser) setField(n *Node, name string, child *Node) {
+func (p *parser) setField(n *Node, id FieldID, child *Node) {
 	if child == nil {
 		return
 	}
 	if n.fieldData == nil {
 		n.fieldData = p.storage.fields.alloc()
 	}
-	entry := fieldEntry{name, child}
+	entry := fieldEntry{id, child}
 	if n.fieldData.count < len(n.fieldData.inline) {
 		n.fieldData.inline[n.fieldData.count] = entry
 	} else {

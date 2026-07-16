@@ -24,7 +24,7 @@ func (p *parser) parseVariableDeclarationWithQualifiers(quals []*Node) *Node {
 	for _, d := range declarators {
 		p.addChild(node, d)
 	}
-	p.setField(node, "storage", firstOrNil(quals))
+	p.setField(node, fieldStorage, firstOrNil(quals))
 
 	if p.at(token.Semicolon) {
 		semi := p.advance()
@@ -54,7 +54,7 @@ func (p *parser) parseDeclarator() *Node {
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		p.addChild(node, tag)
 	}
 
@@ -64,13 +64,13 @@ func (p *parser) parseDeclarator() *Node {
 		return node
 	}
 	name := p.parseQualifiedIdentifier()
-	p.setField(node, "name", name)
+	p.setField(node, fieldName, name)
 	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
 	if p.at(token.Lt) {
 		selector := p.parseStateSelector()
-		p.setField(node, "capacity", selector)
+		p.setField(node, fieldCapacity, selector)
 		p.addChild(node, selector)
 	}
 
@@ -81,18 +81,18 @@ func (p *parser) parseDeclarator() *Node {
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		p.setField(node, "array", dims[0])
+		p.setField(node, fieldArray, dims[0])
 	}
 	if p.at(token.Lt) {
 		selector := p.parseStateSelector()
-		p.setField(node, "capacity", selector)
+		p.setField(node, fieldCapacity, selector)
 		p.addChild(node, selector)
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		init := p.parseDeclaratorInitializer()
-		p.setField(node, "initializer", init)
+		p.setField(node, fieldInitializer, init)
 		p.addChild(node, init)
 		node.End = init.End
 		node.Trailing = init.Trailing
@@ -122,7 +122,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 
 	if p.at(token.Identifier) {
 		name := p.parseQualifiedIdentifier()
-		p.setField(node, "name", name)
+		p.setField(node, fieldName, name)
 		p.addChild(node, name)
 	}
 
@@ -139,12 +139,12 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		tag = p.parseOptionalTagPrefix()
 	}
 	if tag != nil {
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		p.addChild(node, tag)
 	}
 
 	if increment := p.parseEnumIncrementClause(); increment != nil {
-		p.setField(node, "increment", increment)
+		p.setField(node, fieldIncrement, increment)
 		p.addChild(node, increment)
 	}
 
@@ -172,7 +172,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		body.HasError = true
 		p.emitMissingToken(token.RBrace, "enum body")
 	}
-	p.setField(node, "body", body)
+	p.setField(node, fieldBody, body)
 	p.addChild(node, body)
 	node.End = body.End
 	node.Trailing = body.Trailing
@@ -216,7 +216,7 @@ func (p *parser) parseEnumEntry() *Node {
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		p.addChild(node, tag)
 	}
 
@@ -231,7 +231,7 @@ func (p *parser) parseEnumEntry() *Node {
 		return node
 	}
 	name := p.parseQualifiedIdentifier()
-	p.setField(node, "name", name)
+	p.setField(node, fieldName, name)
 	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
@@ -243,13 +243,13 @@ func (p *parser) parseEnumEntry() *Node {
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		p.setField(node, "array", dims[0])
+		p.setField(node, fieldArray, dims[0])
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		val := p.parseTernary()
-		p.setField(node, "value", val)
+		p.setField(node, fieldValue, val)
 		p.addChild(node, val)
 		node.End = val.End
 		node.Trailing = val.Trailing

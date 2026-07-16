@@ -50,7 +50,7 @@ func (p *parser) trySingleStatementConditional() (node *Node, ok bool) {
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
 		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
-		p.setField(branch, "directive", directive)
+		p.setField(branch, fieldDirective, directive)
 		p.addChild(branch, directive)
 		p.addChild(region, branch)
 
@@ -109,34 +109,34 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	for _, q := range quals {
 		p.addChild(node, q)
 	}
-	p.setField(node, "storage", firstOrNil(quals))
+	p.setField(node, fieldStorage, firstOrNil(quals))
 	if tag != nil {
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		p.addChild(node, tag)
 	}
 	for _, dimension := range callingConvention {
 		p.addChild(node, dimension)
 	}
-	p.setField(node, "calling_convention", firstOrNil(callingConvention))
-	p.setField(node, "name", name)
+	p.setField(node, fieldCallingConvention, firstOrNil(callingConvention))
+	p.setField(node, fieldName, name)
 	p.addChild(node, name)
 	for _, dimension := range nameDimensions {
 		p.addChild(node, dimension)
 	}
-	p.setField(node, "dimensions", firstOrNil(nameDimensions))
+	p.setField(node, fieldDimensions, firstOrNil(nameDimensions))
 	if generic != nil {
-		p.setField(node, "generic", generic)
+		p.setField(node, fieldGeneric, generic)
 		p.addChild(node, generic)
 	}
-	p.setField(node, "parameters", params)
+	p.setField(node, fieldParameters, params)
 	p.addChild(node, params)
 	if stateSel != nil {
-		p.setField(node, "state", stateSel)
+		p.setField(node, fieldState, stateSel)
 		p.addChild(node, stateSel)
 	}
 
 	if body != nil {
-		p.setField(node, "body", body)
+		p.setField(node, fieldBody, body)
 		p.addChild(node, body)
 		return node
 	}
@@ -144,7 +144,7 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	if p.at(token.Assign) {
 		p.advance()
 		alias := p.parseAssignment()
-		p.setField(node, "alias", alias)
+		p.setField(node, fieldAlias, alias)
 		p.addChild(node, alias)
 		node.End = alias.End
 		node.Trailing = alias.Trailing

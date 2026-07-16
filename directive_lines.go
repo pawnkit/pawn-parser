@@ -38,7 +38,7 @@ func (p *parser) consumeRawDirectiveLine(startOffset int, kind Kind) *Node {
 
 	if kind == KindDirectiveIf || kind == KindDirectiveElseif || kind == KindDirectiveAssert {
 		if cond, ok := p.trySubParseExpression(payloadStartIdx, payloadEndIdx); ok {
-			p.setField(n, "condition", cond)
+			p.setField(n, fieldCondition, cond)
 			n.Children = []*Node{cond}
 		}
 	}
@@ -78,7 +78,7 @@ func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
 
 	node := p.storeNode(Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia})
 	node.Children = []*Node{pathNode}
-	p.setField(node, "path", pathNode)
+	p.setField(node, fieldPath, pathNode)
 	return node
 }
 

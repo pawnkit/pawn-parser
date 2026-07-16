@@ -47,7 +47,7 @@ func (p *parser) parseParameter() *Node {
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		p.setField(node, "tag", tag)
+		p.setField(node, fieldTag, tag)
 		p.addChild(node, tag)
 	}
 
@@ -87,7 +87,7 @@ func (p *parser) parseParameterName(node *Node) bool {
 		return false
 	}
 	name := p.parseQualifiedIdentifier()
-	p.setField(node, "name", name)
+	p.setField(node, fieldName, name)
 	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
@@ -102,18 +102,18 @@ func (p *parser) parseParameterSuffix(node *Node) {
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		p.setField(node, "array", dims[0])
+		p.setField(node, fieldArray, dims[0])
 	}
 	if p.at(token.Lt) {
 		generic := p.parseStateSelector()
-		p.setField(node, "generic", generic)
+		p.setField(node, fieldGeneric, generic)
 		p.addChild(node, generic)
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		def := p.parseAssignment()
-		p.setField(node, "default_value", def)
+		p.setField(node, fieldDefaultValue, def)
 		p.addChild(node, def)
 		node.End = def.End
 		node.Trailing = def.Trailing

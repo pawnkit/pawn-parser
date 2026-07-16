@@ -151,12 +151,12 @@ func (p *parser) parseDimensions() []*Node {
 		dim := p.storeNode(Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		if !p.at(token.RBracket) {
 			expr := p.parseExpression()
-			p.setField(dim, "size", expr)
+			p.setField(dim, fieldSize, expr)
 			p.addChild(dim, expr)
 		}
 		if p.at(token.Identifier) && p.cur().Text(p.source) == "char" {
 			packed := p.newLeaf(KindIdentifier, p.advance())
-			p.setField(dim, "packed", packed)
+			p.setField(dim, fieldPacked, packed)
 			p.addChild(dim, packed)
 		}
 		if p.at(token.RBracket) {

@@ -89,7 +89,7 @@ func (p *parser) parseStringizeExpression() *Node {
 	nameTok := p.advance()
 	name := p.newLeaf(KindIdentifier, nameTok)
 	node := p.storeNode(Node{Kind: KindStringizeExpression, Tok: hash, Start: hash.Start.Offset, End: nameTok.End.Offset, Leading: hash.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
-	p.setField(node, "name", name)
+	p.setField(node, fieldName, name)
 	p.addChild(node, name)
 	return node
 }
@@ -111,7 +111,7 @@ func (p *parser) parseParenthesized() *Node {
 	lp := p.advance()
 	inner := p.parseExpression()
 	node := p.newNode(KindParenthesizedExpression, inner)
-	p.setField(node, "expression", inner)
+	p.setField(node, fieldExpression, inner)
 	node.Start = lp.Start.Offset
 	node.Leading = lp.LeadingTrivia
 	if p.at(token.RParen) {

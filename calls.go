@@ -17,13 +17,13 @@ func (p *parser) parsePostfix() *Node {
 		case token.PlusPlus, token.MinusMinus:
 			opTok := p.advance()
 			node := p.newNode(KindUpdateExpression, expr)
-			p.setField(node, "expression", expr)
+			p.setField(node, fieldExpression, expr)
 			node.Tok = opTok
 			expr = node
 		case token.Identifier:
 			opTok := p.advance()
 			node := p.newNode(KindUnaryExpression, expr)
-			p.setField(node, "expression", expr)
+			p.setField(node, fieldExpression, expr)
 			node.Tok = opTok
 			node.End = opTok.End.Offset
 			node.Trailing = opTok.TrailingTrivia
@@ -62,7 +62,7 @@ func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
 	node := p.directiveSpan(KindMacroBody, target.Start, last.End.Offset, target.Leading, last.TrailingTrivia)
 	node.Tok = lt
 	node.Children = children
-	p.setField(node, "target", target)
+	p.setField(node, fieldTarget, target)
 	return node
 }
 
@@ -71,8 +71,8 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 	index := p.parseExpression()
 	node := p.newNode(KindSubscriptExpression, target, index)
 	node.Tok = open
-	p.setField(node, "array", target)
-	p.setField(node, "index", index)
+	p.setField(node, fieldArray, target)
+	p.setField(node, fieldIndex, index)
 	if p.at(token.RBrace) {
 		rb := p.advance()
 		node.End = rb.End.Offset
@@ -101,8 +101,8 @@ func (p *parser) parseMemberSelection(target *Node) *Node {
 	}
 	member := p.newLeaf(KindIdentifier, p.advance())
 	node := p.newNode(KindBinaryExpression, target, member)
-	p.setField(node, "left", target)
-	p.setField(node, "right", member)
+	p.setField(node, fieldLeft, target)
+	p.setField(node, fieldRight, member)
 	node.Tok = op
 	return node
 }
@@ -110,8 +110,8 @@ func (p *parser) parseMemberSelection(target *Node) *Node {
 func (p *parser) parseCall(callee *Node) *Node {
 	args := p.parseArgumentList()
 	node := p.newNode(KindCallExpression, callee, args)
-	p.setField(node, "function", callee)
-	p.setField(node, "arguments", args)
+	p.setField(node, fieldFunction, callee)
+	p.setField(node, fieldArguments, args)
 	return node
 }
 
@@ -149,8 +149,8 @@ func (p *parser) parseCallArgument() *Node {
 	opTok := p.advance()
 	right := p.parseAssignment()
 	node := p.newNode(KindAssignmentExpression, name, right)
-	p.setField(node, "left", name)
-	p.setField(node, "right", right)
+	p.setField(node, fieldLeft, name)
+	p.setField(node, fieldRight, right)
 	node.Tok = opTok
 	return node
 }
@@ -275,8 +275,8 @@ func (p *parser) parseSubscript(target *Node) *Node {
 	}
 	node := p.newNode(KindSubscriptExpression, target, index)
 	node.Tok = open
-	p.setField(node, "array", target)
-	p.setField(node, "index", index)
+	p.setField(node, fieldArray, target)
+	p.setField(node, fieldIndex, index)
 	if p.at(token.RBracket) {
 		rb := p.advance()
 		node.End = rb.End.Offset

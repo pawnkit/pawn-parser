@@ -22,10 +22,10 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 
 	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
 		node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: nameNode.End, Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia})
-		p.setField(node, "name", nameNode)
+		p.setField(node, fieldName, nameNode)
 		p.addChild(node, nameNode)
 		if params != nil {
-			p.setField(node, "parameters", params)
+			p.setField(node, fieldParameters, params)
 			p.addChild(node, params)
 		}
 		return node
@@ -46,13 +46,13 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 	valueNode := p.parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd)
 
 	node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia})
-	p.setField(node, "name", nameNode)
+	p.setField(node, fieldName, nameNode)
 	p.addChild(node, nameNode)
 	if params != nil {
-		p.setField(node, "parameters", params)
+		p.setField(node, fieldParameters, params)
 		p.addChild(node, params)
 	}
-	p.setField(node, "value", valueNode)
+	p.setField(node, fieldValue, valueNode)
 	p.addChild(node, valueNode)
 	return node
 }

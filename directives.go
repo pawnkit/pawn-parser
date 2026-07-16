@@ -173,8 +173,8 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			if item.Kind == KindConditionalRegion && p.at(token.LBrace) && conditionalFunctionHeaders(item) {
 				body := p.parseBlock()
 				wrapper := p.newNode(KindConditionalFunction, item, body)
-				p.setField(wrapper, "headers", item)
-				p.setField(wrapper, "body", body)
+				p.setField(wrapper, fieldHeaders, item)
+				p.setField(wrapper, fieldBody, body)
 				item = wrapper
 			}
 			items = p.appendNode(items, item)
@@ -208,14 +208,14 @@ func (p *parser) attachSharedAlternative(conditional *Node) {
 	}
 	p.advance()
 	alternative := p.parseControlledStatement()
-	p.setField(conditional, "alternative", alternative)
+	p.setField(conditional, fieldAlternative, alternative)
 	for _, branch := range conditional.Children {
 		ifStatement := trailingBranchIf(branch)
-		if ifStatement == nil || ifStatement.Field("alternative") != nil {
+		if ifStatement == nil || ifStatement.field(fieldAlternative) != nil {
 			continue
 		}
-		p.setField(ifStatement, "alternative", alternative)
-		p.setField(branch, "shared_alternative", alternative)
+		p.setField(ifStatement, fieldAlternative, alternative)
+		p.setField(branch, fieldSharedAlternative, alternative)
 	}
 	conditional.End = alternative.End
 	conditional.Trailing = alternative.Trailing
@@ -240,14 +240,14 @@ func (p *parser) attachConditionalContinuation(items []*Node, conditional *Node)
 		return false
 	}
 	previous := items[len(items)-1]
-	if previous.Kind != KindIfStatement || previous.Field("alternative") != nil {
+	if previous.Kind != KindIfStatement || previous.field(fieldAlternative) != nil {
 		return false
 	}
-	p.setField(previous, "conditional_alternatives", conditional)
+	p.setField(previous, fieldConditionalAlternatives, conditional)
 	p.addChild(previous, conditional)
 	p.advance()
 	alternative := p.parseControlledStatement()
-	p.setField(previous, "alternative", alternative)
+	p.setField(previous, fieldAlternative, alternative)
 	p.addChild(previous, alternative)
 	return true
 }
@@ -268,7 +268,7 @@ func conditionalFunctionHeaders(region *Node) bool {
 		case KindDirectiveIf, KindDirectiveElseif, KindDirectiveElse, KindDirectiveEndif:
 			return true
 		case KindFunctionDeclaration:
-			if n.Field("alias") != nil {
+			if n.field(fieldAlias) != nil {
 				return false
 			}
 			n.HasError = false

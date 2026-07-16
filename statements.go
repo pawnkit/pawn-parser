@@ -140,9 +140,9 @@ func (p *parser) parseMacroInvocationBlock() *Node {
 	args := p.parseArgumentList()
 	body := p.parseControlledStatement()
 	node := p.newNode(KindMacroInvocationBlock, name, args, body)
-	p.setField(node, "function", name)
-	p.setField(node, "arguments", args)
-	p.setField(node, "body", body)
+	p.setField(node, fieldFunction, name)
+	p.setField(node, fieldArguments, args)
+	p.setField(node, fieldBody, body)
 	return node
 }
 
@@ -195,15 +195,15 @@ func (p *parser) parseIfStatement() *Node {
 	condition := p.parseParenCondition()
 	consequence := p.parseControlledStatement()
 	node := p.newNode(KindIfStatement, condition, consequence)
-	p.setField(node, "condition", condition)
-	p.setField(node, "consequence", consequence)
+	p.setField(node, fieldCondition, condition)
+	p.setField(node, fieldConsequence, consequence)
 	node.Tok = kw
 	node.Start = kw.Start.Offset
 	node.Leading = kw.LeadingTrivia
 	if p.at(token.KwElse) {
 		p.advance()
 		alternative := p.parseControlledStatement()
-		p.setField(node, "alternative", alternative)
+		p.setField(node, fieldAlternative, alternative)
 		p.addChild(node, alternative)
 		node.End = alternative.End
 		node.Trailing = alternative.Trailing
@@ -228,8 +228,8 @@ func (p *parser) parseWhileStatement() *Node {
 	condition := p.parseParenCondition()
 	body := p.parseControlledStatement()
 	node := p.newNode(KindWhileStatement, condition, body)
-	p.setField(node, "condition", condition)
-	p.setField(node, "body", body)
+	p.setField(node, fieldCondition, condition)
+	p.setField(node, fieldBody, body)
 	node.Tok = kw
 	node.Start = kw.Start.Offset
 	node.Leading = kw.LeadingTrivia
@@ -240,7 +240,7 @@ func (p *parser) parseDoWhileStatement() *Node {
 	kw := p.advance()
 	body := p.parseControlledStatement()
 	node := p.storeNode(Node{Kind: KindDoWhileStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-	p.setField(node, "body", body)
+	p.setField(node, fieldBody, body)
 	p.addChild(node, body)
 	if p.at(token.KwWhile) {
 		p.advance()
@@ -248,7 +248,7 @@ func (p *parser) parseDoWhileStatement() *Node {
 		node.HasError = true
 	}
 	condition := p.parseParenCondition()
-	p.setField(node, "condition", condition)
+	p.setField(node, fieldCondition, condition)
 	p.addChild(node, condition)
 	p.consumeTrailingSemi(node)
 	return node
@@ -278,7 +278,7 @@ func (p *parser) parseForStatement() *Node {
 
 	if !p.at(token.Semicolon) {
 		init := p.parseForInit()
-		p.setField(node, "init", init)
+		p.setField(node, fieldInit, init)
 		p.addChild(node, init)
 	}
 	if p.at(token.Semicolon) {
@@ -289,7 +289,7 @@ func (p *parser) parseForStatement() *Node {
 
 	if !p.at(token.Semicolon) {
 		cond := p.parseExpression()
-		p.setField(node, "condition", cond)
+		p.setField(node, fieldCondition, cond)
 		p.addChild(node, cond)
 	}
 	if p.at(token.Semicolon) {
@@ -300,7 +300,7 @@ func (p *parser) parseForStatement() *Node {
 
 	if !p.at(token.RParen) {
 		update := p.parseExpression()
-		p.setField(node, "increment", update)
+		p.setField(node, fieldIncrement, update)
 		p.addChild(node, update)
 	}
 	if p.at(token.RParen) {
@@ -310,7 +310,7 @@ func (p *parser) parseForStatement() *Node {
 	}
 
 	body := p.parseControlledStatement()
-	p.setField(node, "body", body)
+	p.setField(node, fieldBody, body)
 	p.addChild(node, body)
 	return node
 }
