@@ -81,7 +81,7 @@ func (p *parser) parseStateStatementTarget(node *Node) {
 		return
 	}
 	p.advance()
-	if !p.at(token.Identifier) && !isKeywordToken(p.cur().Kind) {
+	if !p.at(token.Identifier) && !isKeywordToken(p.curKind()) {
 		node.HasError = true
 		return
 	}

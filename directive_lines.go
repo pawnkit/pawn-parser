@@ -53,7 +53,7 @@ func (p *parser) trySubParseExpression(startIdx, endIdx int) (*Node, bool) {
 	copy(toks, p.toks[startIdx:endIdx])
 	last := toks[len(toks)-1]
 	toks = append(toks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
-	return tryParseAll(toks, p.source, false, (*parser).parseExpression)
+	return p.tryParseAll(toks, false, (*parser).parseExpression)
 }
 
 func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {

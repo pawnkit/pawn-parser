@@ -10,7 +10,7 @@ func (p *parser) parseStateSelector() *Node {
 	lt := p.advance()
 	node := p.storeNode(Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia})
 	for !p.at(token.Gt) {
-		if p.cur().Kind != token.Identifier && !isKeywordToken(p.cur().Kind) {
+		if p.curKind() != token.Identifier && !isKeywordToken(p.curKind()) {
 			p.pos = startIdx
 			return p.rawStateSelector()
 		}
@@ -41,7 +41,7 @@ func (p *parser) rawStateSelector() *Node {
 func (p *parser) skipAngleStateSelector() {
 	depth := 0
 	for !p.atEnd() {
-		switch p.cur().Kind {
+		switch p.curKind() {
 		case token.Lt:
 			depth++
 			p.advance()
@@ -70,7 +70,7 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		node.Trailing = colon.TrailingTrivia
 		return node
 	}
-	if p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon {
+	if p.curKind() == token.Identifier && p.peekKind(1) == token.Colon {
 		tagTok := p.advance()
 		p.rememberTag(tagTok.Text(p.source))
 		colon := p.advance()
@@ -80,7 +80,7 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		node.Trailing = colon.TrailingTrivia
 		return node
 	}
-	if p.cur().Kind == token.LBrace {
+	if p.curKind() == token.LBrace {
 		saved := p.pos
 		lb := p.advance()
 		node := p.storeNode(Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
@@ -114,14 +114,14 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 }
 
 func (p *parser) qualifiedTagPrefixStart() bool {
-	if !p.at(token.Identifier) || p.peek(1).Kind != token.ColonColon {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.ColonColon {
 		return false
 	}
 	i := 1
-	for p.peek(i).Kind == token.ColonColon && p.peek(i+1).Kind == token.Identifier {
+	for p.peekKind(i) == token.ColonColon && p.peekKind(i+1) == token.Identifier {
 		i += 2
 	}
-	return p.peek(i).Kind == token.Colon
+	return p.peekKind(i) == token.Colon
 }
 
 func (p *parser) parseQualifiedIdentifier() *Node {
@@ -167,7 +167,7 @@ func (p *parser) parseDimensions() []*Node {
 			dim.HasError = true
 			p.emitMissingToken(token.RBracket, "array dimension")
 		}
-		dims = append(dims, dim)
+		dims = p.appendNode(dims, dim)
 	}
 	return dims
 }

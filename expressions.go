@@ -74,7 +74,7 @@ func (p *parser) parseExpression() *Node {
 
 func (p *parser) parseAssignment() *Node {
 	left := p.parseTernary()
-	if isAssignOp(p.cur().Kind) {
+	if isAssignOp(p.curKind()) {
 		opTok := p.advance()
 		right := p.parseAssignment()
 		node := p.newNode(KindAssignmentExpression, left, right)
@@ -113,7 +113,7 @@ func (p *parser) parseTernary() *Node {
 func (p *parser) parseBinary(minBP int) *Node {
 	left := p.parseUnary()
 	for {
-		bp, ok := binaryBindingPower(p.cur().Kind)
+		bp, ok := binaryBindingPower(p.curKind())
 		if !ok || bp < minBP {
 			return left
 		}
@@ -157,7 +157,7 @@ func (p *parser) parseUnary() *Node {
 		node.Leading = opTok.LeadingTrivia
 		return node
 	}
-	if isUnaryOp(p.cur().Kind) {
+	if isUnaryOp(p.curKind()) {
 		opTok := p.advance()
 		operand := p.parseUnary()
 		node := p.newNode(KindUnaryExpression, operand)
@@ -183,11 +183,11 @@ func (p *parser) parseUnary() *Node {
 }
 
 func (p *parser) isMacroUnaryOperator() bool {
-	return p.at(token.Identifier) && p.peek(1).Kind == token.Identifier
+	return p.at(token.Identifier) && p.peekKind(1) == token.Identifier
 }
 
 func isTagCastStart(p *parser) bool {
-	if p.cur().Kind != token.Identifier || p.peek(1).Kind != token.Colon {
+	if p.curKind() != token.Identifier || p.peekKind(1) != token.Colon {
 		return false
 	}
 	return !p.suppressTagCast || p.knowsTag(p.cur().Text(p.source))

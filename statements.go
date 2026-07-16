@@ -11,11 +11,11 @@ func (p *parser) parseStatement() *Node {
 	}
 	defer p.exitDepth()
 
-	if isKeywordToken(p.cur().Kind) && p.peek(1).Kind == token.LParen && !nativeParenthesizedStatement(p.cur().Kind) {
+	if isKeywordToken(p.curKind()) && p.peekKind(1) == token.LParen && !nativeParenthesizedStatement(p.curKind()) {
 		return p.parseExpressionStatement()
 	}
 
-	switch p.cur().Kind {
+	switch p.curKind() {
 	case token.LBrace:
 		return p.parseBlock()
 	case token.KwIf:
@@ -73,7 +73,7 @@ func nativeParenthesizedStatement(kind token.Kind) bool {
 }
 
 func isLabelStart(p *parser) bool {
-	return p.cur().Kind == token.Identifier && p.peek(1).Kind == token.Colon && p.peek(2).Kind != token.Colon
+	return p.curKind() == token.Identifier && p.peekKind(1) == token.Colon && p.peekKind(2) != token.Colon
 }
 
 func (p *parser) macroFunctionDefinitionStart() bool {
@@ -83,14 +83,14 @@ func (p *parser) macroFunctionDefinitionStart() bool {
 	depth := 0
 	foundParams := false
 	for i := 1; ; i++ {
-		switch p.peek(i).Kind {
+		switch p.peekKind(i) {
 		case token.LParen:
 			depth++
 			foundParams = true
 		case token.RParen:
 			depth--
 			if foundParams && depth == 0 {
-				return p.peek(i+1).Kind == token.LBrace
+				return p.peekKind(i+1) == token.LBrace
 			}
 		case token.EOF, token.Semicolon:
 			return false
@@ -100,25 +100,25 @@ func (p *parser) macroFunctionDefinitionStart() bool {
 }
 
 func isMacroInvocationBlockStart(p *parser) bool {
-	if p.cur().Kind != token.Identifier || p.peek(1).Kind != token.LParen {
+	if p.curKind() != token.Identifier || p.peekKind(1) != token.LParen {
 		return false
 	}
 	depth := 0
 	iteratorArgument := false
 	for i := 1; ; i++ {
-		tk := p.peek(i).Kind
+		tk := p.peekKind(i)
 		if tk == token.EOF {
 			return false
 		}
 		switch {
 		case tk == token.LParen:
 			depth++
-		case depth == 1 && tk == token.KwNew && p.peek(i+2).Kind == token.Colon:
+		case depth == 1 && tk == token.KwNew && p.peekKind(i+2) == token.Colon:
 			iteratorArgument = true
 		case tk == token.RParen:
 			depth--
 			if depth == 0 {
-				next := p.peek(i + 1).Kind
+				next := p.peekKind(i + 1)
 				return canStartMacroControlledStatement(next) || iteratorArgument && next != token.Hash && next != token.Semicolon
 			}
 		}
@@ -204,7 +204,7 @@ func (p *parser) parseIfStatement() *Node {
 		p.advance()
 		alternative := p.parseControlledStatement()
 		p.setField(node, "alternative", alternative)
-		node.Children = append(node.Children, alternative)
+		p.addChild(node, alternative)
 		node.End = alternative.End
 		node.Trailing = alternative.Trailing
 		if alternative.HasError {

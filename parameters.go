@@ -11,11 +11,10 @@ func (p *parser) parseParameterList() *Node {
 	lp := p.advance()
 	node := p.storeNode(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
-		parseItem: parseCommaListItem((*parser).parseParameter),
-		stop: func(p *parser) bool {
-			p.abortIfSharedAcrossBranch()
-			return p.at(token.RParen)
-		},
+		parseItem:      (*parser).parseParameter,
+		stopKind:       token.RParen,
+		abortAtStop:    true,
+		commaSeparated: true,
 	})
 	for _, it := range items {
 		p.addChild(node, it)
@@ -77,10 +76,10 @@ func (p *parser) parseParameterQualifiers(node *Node) {
 }
 
 func (p *parser) parseParameterName(node *Node) bool {
-	if !isFunctionNameToken(p.cur().Kind) {
+	if !isFunctionNameToken(p.curKind()) {
 		p.emitMissing(DiagnosticMissingIdentifier, "expected parameter name", token.Identifier)
 		node.HasError = true
-		if !p.atEnd() && p.cur().Kind != token.Comma && p.cur().Kind != token.RParen {
+		if !p.atEnd() && p.curKind() != token.Comma && p.curKind() != token.RParen {
 			bad := p.advance()
 			node.End = bad.End.Offset
 			node.Trailing = bad.TrailingTrivia

@@ -38,8 +38,9 @@ func (p *parser) parseVariableDeclarationWithQualifiers(quals []*Node) *Node {
 
 func (p *parser) parseDeclaratorList() []*Node {
 	return p.parseItemSequence(itemGrammar{
-		parseItem:                 parseCommaListItem((*parser).parseDeclarator),
-		stop:                      func(p *parser) bool { return p.at(token.Semicolon) },
+		parseItem:                 (*parser).parseDeclarator,
+		stopKind:                  token.Semicolon,
+		commaSeparated:            true,
 		preserveRecoverySemicolon: true,
 		recoveryContext:           "declarator",
 		recoveryExpected:          []token.Kind{token.Comma, token.Semicolon},
@@ -57,7 +58,7 @@ func (p *parser) parseDeclarator() *Node {
 		p.addChild(node, tag)
 	}
 
-	if !isFunctionNameToken(p.cur().Kind) {
+	if !isFunctionNameToken(p.curKind()) {
 		p.emitMissing(DiagnosticMissingIdentifier, "expected declarator name", token.Identifier)
 		node.HasError = true
 		return node
@@ -127,10 +128,10 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 
 	var tag *Node
 	switch {
-	case p.at(token.Colon) && p.peek(1).Kind == token.LBrace:
+	case p.at(token.Colon) && p.peekKind(1) == token.LBrace:
 		colon := p.advance()
 		tag = p.directiveSpan(KindTaggedType, colon.Start.Offset, colon.End.Offset, colon.LeadingTrivia, colon.TrailingTrivia)
-	case p.at(token.Colon) && p.peek(1).Kind == token.Identifier:
+	case p.at(token.Colon) && p.peekKind(1) == token.Identifier:
 		colon := p.advance()
 		tag = p.newLeaf(KindTaggedType, p.advance())
 		tag.Start = colon.Start.Offset
@@ -155,11 +156,10 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 	lb := p.advance()
 	body := p.storeNode(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
-		parseItem: parseCommaListItem((*parser).parseEnumEntry),
-		stop: func(p *parser) bool {
-			p.abortIfSharedAcrossBranch()
-			return p.at(token.RBrace)
-		},
+		parseItem:      (*parser).parseEnumEntry,
+		stopKind:       token.RBrace,
+		abortAtStop:    true,
+		commaSeparated: true,
 	})
 	for _, it := range items {
 		p.addChild(body, it)
@@ -223,7 +223,7 @@ func (p *parser) parseEnumEntry() *Node {
 	if !p.at(token.Identifier) {
 		p.emitMissing(DiagnosticMissingIdentifier, "expected enum entry name", token.Identifier)
 		node.HasError = true
-		if !p.atEnd() && p.cur().Kind != token.Comma && p.cur().Kind != token.RBrace {
+		if !p.atEnd() && p.curKind() != token.Comma && p.curKind() != token.RBrace {
 			bad := p.advance()
 			node.End = bad.End.Offset
 			node.Trailing = bad.TrailingTrivia

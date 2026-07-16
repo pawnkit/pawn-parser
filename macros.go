@@ -119,10 +119,10 @@ func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int
 	last := bodyToks[len(bodyToks)-1]
 	bodyToks = append(bodyToks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
 
-	if expr, ok := tryParseAll(bodyToks, p.source, false, (*parser).parseExpression); ok {
+	if expr, ok := p.tryParseAll(bodyToks, false, (*parser).parseExpression); ok {
 		return expr
 	}
-	if stmt, ok := tryParseAll(bodyToks, p.source, true, (*parser).parseStatement); ok {
+	if stmt, ok := p.tryParseAll(bodyToks, true, (*parser).parseStatement); ok {
 		if childrenHaveMissingSemicolon(stmt) {
 			return raw()
 		}
@@ -140,10 +140,15 @@ func childrenHaveMissingSemicolon(node *Node) bool {
 	return false
 }
 
-func tryParseAll(toks []token.Token, source []byte, lenientTrailingSemi bool, fn func(*parser) *Node) (*Node, bool) {
-	sub := &parser{source: source, toks: toks, allowMissingTrailingSemi: lenientTrailingSemi}
-	node := fn(sub)
+func (p *parser) tryParseAll(toks []token.Token, lenientTrailingSemi bool, fn func(*parser) *Node) (*Node, bool) {
+	mark := p.storage.mark()
+	sub := parser{
+		source: p.source, toks: toks, storage: p.storage,
+		allowMissingTrailingSemi: lenientTrailingSemi,
+	}
+	node := fn(&sub)
 	if node == nil || node.HasError || sub.broken || !sub.atEnd() {
+		p.storage.rewind(mark)
 		return nil, false
 	}
 	return node, true

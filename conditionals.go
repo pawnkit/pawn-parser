@@ -9,20 +9,14 @@ import (
 func (p *parser) parseConditionalRegion(g itemGrammar) *Node {
 	startPos := p.pos
 	savedBroken := p.broken
-	arenaMark := p.arena.mark()
-	fieldMark := p.fields.mark()
-	childMark := p.children.mark()
-	triviaMark := p.trivia.mark()
+	storageMark := p.storage.mark()
 	region, ok := p.tryParseConditionalRegion(g)
 	if ok {
 		return region
 	}
 	p.pos = startPos
 	p.broken = savedBroken
-	p.arena.rewind(arenaMark)
-	p.fields.rewind(fieldMark)
-	p.children.rewind(childMark)
-	p.trivia.rewind(triviaMark)
+	p.storage.rewind(storageMark)
 	if p.isConditionalSplice() {
 		return p.consumeConditionalSplice()
 	}
@@ -176,7 +170,7 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
 		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
 		p.setField(branch, "directive", directive)
-		branch.Children = append(branch.Children, directive)
+		p.addChild(branch, directive)
 		p.addChild(region, branch)
 
 		if dk == dirEndif {
@@ -337,7 +331,7 @@ func (p *parser) parseSharedConditionalAlternative(node *Node) {
 func (p *parser) consumeLogicalLineCounting(count bool, depth *int) token.Token {
 	var last token.Token
 	for !p.atEnd() {
-		k := p.cur().Kind
+		k := p.curKind()
 		last = p.advance()
 		if count {
 			switch k {

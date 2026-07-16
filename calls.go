@@ -5,7 +5,7 @@ import "github.com/pawnkit/pawn-parser/token"
 func (p *parser) parsePostfix() *Node {
 	expr := p.parsePrimary()
 	for {
-		switch p.cur().Kind {
+		switch p.curKind() {
 		case token.LParen:
 			expr = p.parseCall(expr)
 		case token.LBracket:
@@ -53,9 +53,9 @@ func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
 		case token.Gt:
 			depth--
 		case token.Identifier, token.MacroParam:
-			children = append(children, p.newLeaf(KindIdentifier, tok))
+			children = p.appendNode(children, p.newLeaf(KindIdentifier, tok))
 		case token.IntLiteral, token.FloatLiteral, token.CharLiteral, token.StringLiteral, token.PackedString:
-			children = append(children, p.newLeaf(KindLiteral, tok))
+			children = p.appendNode(children, p.newLeaf(KindLiteral, tok))
 		default:
 		}
 	}
@@ -86,7 +86,7 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 
 func (p *parser) parseMemberSelection(target *Node) *Node {
 	op := p.advance()
-	if !p.at(token.Identifier) && !p.at(token.MacroParam) && !isKeywordToken(p.cur().Kind) {
+	if !p.at(token.Identifier) && !p.at(token.MacroParam) && !isKeywordToken(p.curKind()) {
 		node := p.newNode(KindBinaryExpression, target)
 		node.Tok = op
 		node.End = op.End.Offset
@@ -94,7 +94,7 @@ func (p *parser) parseMemberSelection(target *Node) *Node {
 		node.HasError = true
 		node.ErrorMessage = "expected identifier after " + op.Kind.String()
 		node.ErrorOffset = p.cur().Start.Offset
-		node.ErrorFound = p.cur().Kind
+		node.ErrorFound = p.curKind()
 		node.ErrorExpected = []token.Kind{token.Identifier}
 		p.emitMissing(DiagnosticMissingIdentifier, node.ErrorMessage, token.Identifier)
 		return node
@@ -116,9 +116,9 @@ func (p *parser) parseCall(callee *Node) *Node {
 }
 
 func (p *parser) parseCallArgument() *Node {
-	if p.at(token.KwNew) && p.peek(1).Kind == token.Identifier &&
-		p.peek(2).Kind == token.Colon && p.peek(3).Kind == token.Identifier &&
-		(p.peek(4).Kind == token.Comma || p.peek(4).Kind == token.RParen) {
+	if p.at(token.KwNew) && p.peekKind(1) == token.Identifier &&
+		p.peekKind(2) == token.Colon && p.peekKind(3) == token.Identifier &&
+		(p.peekKind(4) == token.Comma || p.peekKind(4) == token.RParen) {
 		first := p.advance()
 		p.advance()
 		p.advance()
@@ -244,13 +244,13 @@ func (p *parser) consumeStructuredMacroArgument(endPos int) *Node {
 	last := start
 	var parts []*Node
 	for p.pos < endPos {
-		kind := p.cur().Kind
+		kind := p.curKind()
 		last = p.advance()
 		switch {
 		case kind == token.Identifier || kind == token.MacroParam || isKeywordToken(kind):
-			parts = append(parts, p.newLeaf(KindIdentifier, last))
+			parts = p.appendNode(parts, p.newLeaf(KindIdentifier, last))
 		case isLiteralToken(kind):
-			parts = append(parts, p.newLeaf(KindLiteral, last))
+			parts = p.appendNode(parts, p.newLeaf(KindLiteral, last))
 		}
 	}
 	node := p.directiveSpan(KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)

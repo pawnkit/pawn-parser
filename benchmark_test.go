@@ -42,3 +42,29 @@ func BenchmarkParseTokensLargeFile(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkParseForLinterLargeFile(b *testing.B) {
+	source := benchmarkSource(b)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	b.ResetTimer()
+	for range b.N {
+		file := ParseWithOptions(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+		if file.Root == nil {
+			b.Fatal("ParseWithOptions returned no tree")
+		}
+	}
+}
+
+func BenchmarkParseCompactLargeFile(b *testing.B) {
+	source := benchmarkSource(b)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	b.ResetTimer()
+	for range b.N {
+		file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+		if len(file.Tree.Nodes) == 0 {
+			b.Fatal("ParseCompact returned no tree")
+		}
+	}
+}

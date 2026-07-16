@@ -30,13 +30,33 @@ func (f *File) HasParseErrors() bool {
 // Parse parses source into a File. Parse errors are reported via
 // File.Broken and Node.HasError.
 func Parse(source []byte) *File {
+	return ParseWithOptions(source, ParseOptions{})
+}
+
+// ParseOptions controls retained parse data.
+type ParseOptions struct {
+	DiscardTokens bool
+	DiscardTrivia bool
+}
+
+// ParseWithOptions parses source with retention options.
+func ParseWithOptions(source []byte, options ParseOptions) *File {
 	toks := lexer.Tokenize(source)
-	return ParseTokens(source, toks)
+	return parseTokens(source, toks, options)
 }
 
 // ParseTokens parses a caller-provided token stream. It is useful for parsing
 // preprocessed tokens whose Origin fields retain expansion history.
 func ParseTokens(source []byte, toks []token.Token) *File {
+	return ParseTokensWithOptions(source, toks, ParseOptions{})
+}
+
+// ParseTokensWithOptions parses tokens with retention options.
+func ParseTokensWithOptions(source []byte, toks []token.Token, options ParseOptions) *File {
+	return parseTokens(source, toks, options)
+}
+
+func parseTokens(source []byte, toks []token.Token, options ParseOptions) *File {
 	if len(toks) == 0 || toks[len(toks)-1].Kind != token.EOF {
 		end := token.Position{Offset: len(source)}
 		toks = append(append([]token.Token(nil), toks...), token.Token{
@@ -45,7 +65,7 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 			End:   end,
 		})
 	}
-	p := &parser{source: source, toks: toks}
+	p := newParser(source, toks, nil)
 	root := p.parseSourceFile()
 	p.buildDiagnosticCoverage()
 	p.ensureErrorDiagnostics(root)
@@ -55,7 +75,27 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 		}
 		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
 	})
+	if options.DiscardTrivia {
+		p.storage.arena.discardTrivia()
+	}
+	toks = retainedTokens(toks, options)
 	return &File{Source: source, Tokens: toks, Root: root, Broken: p.broken, Diagnostics: p.diagnostics}
+}
+
+func retainedTokens(toks []token.Token, options ParseOptions) []token.Token {
+	if options.DiscardTokens {
+		return nil
+	}
+	if options.DiscardTrivia {
+		withoutTrivia := make([]token.Token, len(toks))
+		copy(withoutTrivia, toks)
+		for i := range withoutTrivia {
+			withoutTrivia[i].LeadingTrivia = nil
+			withoutTrivia[i].TrailingTrivia = nil
+		}
+		return withoutTrivia
+	}
+	return toks
 }
 
 type parser struct {
@@ -73,16 +113,51 @@ type parser struct {
 	suppressTagCast bool
 	knownTags       map[string]struct{}
 
-	arena    nodeArena
-	fields   fieldArena
-	children childArena
-	trivia   parserTriviaArena
+	storage *parserStorage
 
 	diagnostics []Diagnostic
 	depthError  bool
 
 	diagnosticRanges []diagnosticRange
 	diagnosticPoints []int
+}
+
+type parserStorage struct {
+	arena    nodeArena
+	fields   fieldArena
+	entries  fieldEntryArena
+	children childArena
+	trivia   parserTriviaArena
+}
+
+type parserStorageMark struct {
+	arena    nodeArenaMark
+	fields   nodeArenaMark
+	entries  nodeArenaMark
+	children nodeArenaMark
+	trivia   nodeArenaMark
+}
+
+func newParser(source []byte, toks []token.Token, storage *parserStorage) *parser {
+	if storage == nil {
+		storage = new(parserStorage)
+	}
+	return &parser{source: source, toks: toks, storage: storage}
+}
+
+func (s *parserStorage) mark() parserStorageMark {
+	return parserStorageMark{
+		arena: s.arena.mark(), fields: s.fields.mark(),
+		entries: s.entries.mark(), children: s.children.mark(), trivia: s.trivia.mark(),
+	}
+}
+
+func (s *parserStorage) rewind(mark parserStorageMark) {
+	s.arena.rewind(mark.arena)
+	s.fields.rewind(mark.fields)
+	s.entries.rewind(mark.entries)
+	s.children.rewind(mark.children)
+	s.trivia.rewind(mark.trivia)
 }
 
 const (
@@ -113,8 +188,7 @@ const (
 	maxNodeBlockSize     = 1024
 )
 
-// nodeArena stores nodes in independent blocks. Blocks are never resized, so
-// pointers returned from alloc remain valid for the lifetime of the tree.
+// nodeArena provides pointer-stable storage.
 type nodeArena struct {
 	blocks [][]Node
 	next   int
@@ -162,6 +236,40 @@ func (a *fieldArena) rewind(mark nodeArenaMark) {
 type childArena struct {
 	blocks [][]*Node
 	next   int
+}
+
+type fieldEntryArena struct {
+	blocks [][]fieldEntry
+	next   int
+}
+
+func (a *fieldEntryArena) alloc(size int) []fieldEntry {
+	if len(a.blocks) == 0 || len(a.blocks[len(a.blocks)-1])-a.next < size {
+		blockSize := 32
+		if len(a.blocks) != 0 {
+			blockSize = min(len(a.blocks[len(a.blocks)-1])*2, 1024)
+		}
+		a.blocks = append(a.blocks, make([]fieldEntry, max(size, blockSize)))
+		a.next = 0
+	}
+	entries := a.blocks[len(a.blocks)-1][a.next : a.next+size : a.next+size]
+	a.next += size
+	return entries
+}
+
+func (a *fieldEntryArena) mark() nodeArenaMark {
+	return nodeArenaMark{blocks: len(a.blocks), next: a.next}
+}
+
+func (a *fieldEntryArena) rewind(mark nodeArenaMark) {
+	if mark.blocks == 0 {
+		a.blocks = nil
+		a.next = 0
+		return
+	}
+	clear(a.blocks[mark.blocks-1][mark.next:])
+	a.blocks = a.blocks[:mark.blocks]
+	a.next = mark.next
 }
 
 type parserTriviaArena struct {
@@ -269,15 +377,39 @@ func (a *nodeArena) rewind(mark nodeArenaMark) {
 	a.next = mark.next
 }
 
-// allocNode returns a pointer to a fresh zero Node from p's arena.
+func (a *nodeArena) discardTrivia() {
+	for blockIndex, block := range a.blocks {
+		if blockIndex == len(a.blocks)-1 {
+			block = block[:a.next]
+		}
+		for i := range block {
+			block[i].Leading = nil
+			block[i].Trailing = nil
+			block[i].Tok.LeadingTrivia = nil
+			block[i].Tok.TrailingTrivia = nil
+		}
+	}
+}
+
+// allocNode allocates a zeroed node.
 func (p *parser) allocNode() *Node {
-	return p.arena.alloc()
+	return p.storage.arena.alloc()
 }
 
 func (p *parser) storeNode(value Node) *Node {
 	n := p.allocNode()
 	*n = value
 	return n
+}
+
+func (p *parser) appendNode(nodes []*Node, node *Node) []*Node {
+	if len(nodes) == cap(nodes) {
+		capacity := max(4, cap(nodes)*2)
+		grown := p.storage.children.alloc(capacity)
+		copy(grown, nodes)
+		nodes = grown[:len(nodes)]
+	}
+	return append(nodes, node)
 }
 
 func (p *parser) missingSemiOK() bool {
@@ -309,12 +441,24 @@ func (p *parser) peek(offset int) token.Token {
 	return p.toks[idx]
 }
 
+func (p *parser) curKind() token.Kind {
+	return p.toks[p.pos].Kind
+}
+
+func (p *parser) peekKind(offset int) token.Kind {
+	idx := max(p.pos+offset, 0)
+	if idx >= len(p.toks) {
+		return p.toks[len(p.toks)-1].Kind
+	}
+	return p.toks[idx].Kind
+}
+
 func (p *parser) at(k token.Kind) bool {
-	return p.cur().Kind == k
+	return p.curKind() == k
 }
 
 func (p *parser) atEnd() bool {
-	return p.cur().Kind == token.EOF
+	return p.curKind() == token.EOF
 }
 
 func (p *parser) advance() token.Token {

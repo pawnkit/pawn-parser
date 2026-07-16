@@ -43,10 +43,10 @@ func (p *parser) parseDeclaration() *Node {
 }
 
 func (p *parser) peekIsOperatorMacroInvocation() bool {
-	if !p.at(token.Identifier) || p.peek(1).Kind != token.LParen {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen {
 		return false
 	}
-	switch p.peek(2).Kind {
+	switch p.peekKind(2) {
 	case token.Plus, token.Minus, token.Star, token.Slash, token.Percent,
 		token.PlusPlus, token.MinusMinus, token.Eq, token.NotEq,
 		token.Lt, token.Gt, token.LtEq, token.GtEq, token.Bang, token.Tilde:
@@ -90,11 +90,11 @@ func (p *parser) collectQualifiers() []*Node {
 	for {
 		switch {
 		case p.annotationQualifierStart():
-			quals = append(quals, p.parseAnnotationQualifier())
-		case slices.Contains(qualifierKinds, p.cur().Kind):
-			quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
+			quals = p.appendNode(quals, p.parseAnnotationQualifier())
+		case slices.Contains(qualifierKinds, p.curKind()):
+			quals = p.appendNode(quals, p.newLeaf(KindIdentifier, p.advance()))
 		case p.macroFunctionQualifierStart():
-			quals = append(quals, p.newLeaf(KindIdentifier, p.advance()))
+			quals = p.appendNode(quals, p.newLeaf(KindIdentifier, p.advance()))
 		default:
 			return quals
 		}
@@ -107,7 +107,7 @@ func (p *parser) parseAnnotationQualifier() *Node {
 }
 
 func (p *parser) annotationQualifierStart() bool {
-	if !p.at(token.Identifier) || p.peek(1).Kind != token.LParen || p.cur().Text(p.source)[0] != '@' {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen || p.cur().Text(p.source)[0] != '@' {
 		return false
 	}
 	saved := p.pos
@@ -124,11 +124,11 @@ func (p *parser) macroFunctionQualifierStart() bool {
 	saved := p.pos
 	defer func() { p.pos = saved }()
 	p.advance()
-	for p.at(token.ColonColon) && p.peek(1).Kind == token.Identifier {
+	for p.at(token.ColonColon) && p.peekKind(1) == token.Identifier {
 		p.advance()
 		p.advance()
 	}
-	for slices.Contains(qualifierKinds, p.cur().Kind) {
+	for slices.Contains(qualifierKinds, p.curKind()) {
 		p.advance()
 	}
 	for {
@@ -154,16 +154,16 @@ func (p *parser) peekIsFunctionDecl() bool {
 	p.parseDimensions()
 	if p.at(token.KwOperator) {
 		p.advance()
-		if isOverloadableOperator(p.cur().Kind) {
+		if isOverloadableOperator(p.curKind()) {
 			p.advance()
 		}
 		return p.at(token.LParen)
 	}
-	if !isFunctionNameToken(p.cur().Kind) {
+	if !isFunctionNameToken(p.curKind()) {
 		return false
 	}
 	p.advance()
-	for p.at(token.ColonColon) && p.peek(1).Kind == token.Identifier {
+	for p.at(token.ColonColon) && p.peekKind(1) == token.Identifier {
 		p.advance()
 		p.advance()
 	}
@@ -188,7 +188,7 @@ func isOverloadableOperator(k token.Kind) bool {
 func (p *parser) parseFunctionName() *Node {
 	if p.at(token.KwOperator) {
 		opKw := p.advance()
-		if isOverloadableOperator(p.cur().Kind) {
+		if isOverloadableOperator(p.curKind()) {
 			symTok := p.advance()
 			return p.storeNode(Node{
 				Kind: KindIdentifier, Start: opKw.Start.Offset, End: symTok.End.Offset,
@@ -199,7 +199,7 @@ func (p *parser) parseFunctionName() *Node {
 		name.HasError = true
 		return name
 	}
-	validName := isFunctionNameToken(p.cur().Kind)
+	validName := isFunctionNameToken(p.curKind())
 	name := p.parseQualifiedIdentifier()
 	if !validName {
 		name.HasError = true

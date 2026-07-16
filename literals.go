@@ -4,7 +4,7 @@ import "github.com/pawnkit/pawn-parser/token"
 
 func (p *parser) parsePrimary() *Node {
 	tok := p.cur()
-	if isKeywordToken(tok.Kind) && p.peek(1).Kind == token.LParen {
+	if isKeywordToken(tok.Kind) && p.peekKind(1) == token.LParen {
 		p.advance()
 		return p.newLeaf(KindIdentifier, tok)
 	}
@@ -18,7 +18,7 @@ func (p *parser) parsePrimary() *Node {
 	case token.StringLiteral, token.PackedString:
 		return p.parseStringConcat()
 	case token.Hash:
-		if p.peek(1).Kind == token.Identifier {
+		if p.peekKind(1) == token.Identifier {
 			return p.parseStringConcat()
 		}
 		p.advance()
@@ -67,10 +67,10 @@ func (p *parser) isStringPartStart() bool {
 	if p.at(token.StringLiteral) || p.at(token.PackedString) {
 		return true
 	}
-	if p.at(token.Identifier) || p.at(token.MacroParam) || isKeywordToken(p.cur().Kind) {
+	if p.at(token.Identifier) || p.at(token.MacroParam) || isKeywordToken(p.curKind()) {
 		return true
 	}
-	return p.at(token.Hash) && p.peek(1).Kind == token.Identifier
+	return p.at(token.Hash) && p.peekKind(1) == token.Identifier
 }
 
 func (p *parser) parseStringPart() *Node {

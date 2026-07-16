@@ -112,12 +112,18 @@ func (p *parser) setField(n *Node, name string, child *Node) {
 		return
 	}
 	if n.fieldData == nil {
-		n.fieldData = p.fields.alloc()
+		n.fieldData = p.storage.fields.alloc()
 	}
 	entry := fieldEntry{name, child}
 	if n.fieldData.count < len(n.fieldData.inline) {
 		n.fieldData.inline[n.fieldData.count] = entry
 	} else {
+		if len(n.fieldData.spill) == cap(n.fieldData.spill) {
+			capacity := max(2, cap(n.fieldData.spill)*2)
+			spill := p.storage.entries.alloc(capacity)
+			copy(spill, n.fieldData.spill)
+			n.fieldData.spill = spill[:len(n.fieldData.spill)]
+		}
 		n.fieldData.spill = append(n.fieldData.spill, entry)
 	}
 	n.fieldData.count++
@@ -144,7 +150,7 @@ func (p *parser) newNode(kind Kind, children ...*Node) *Node {
 		}
 	}
 	if count != 0 {
-		n.Children = p.children.alloc(count)[:0]
+		n.Children = p.storage.children.alloc(count)[:0]
 		for _, c := range children {
 			if c != nil {
 				n.Children = append(n.Children, c)
@@ -177,7 +183,7 @@ func (p *parser) addChild(n, c *Node) {
 	}
 	if len(n.Children) == cap(n.Children) {
 		capacity := max(4, cap(n.Children)*2)
-		children := p.children.alloc(capacity)
+		children := p.storage.children.alloc(capacity)
 		copy(children, n.Children)
 		n.Children = children[:len(n.Children)]
 	}

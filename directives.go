@@ -5,6 +5,9 @@ import "github.com/pawnkit/pawn-parser/token"
 type itemGrammar struct {
 	parseItem                 func(p *parser) *Node
 	stop                      func(p *parser) bool
+	stopKind                  token.Kind
+	abortAtStop               bool
+	commaSeparated            bool
 	preserveRecoverySemicolon bool
 	parseUnknownHashAsItem    bool
 	recoveryContext           string
@@ -135,7 +138,7 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 				panic(condAbort{})
 			}
 		}
-		if g.stop(p) {
+		if p.itemSequenceStopped(g) {
 			return items
 		}
 		startPos := p.pos
@@ -146,7 +149,7 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 				item = p.parseConditionalRegion(g)
 			case dirUnknown:
 				if g.parseUnknownHashAsItem {
-					item = g.parseItem(p)
+					item = p.parseGrammarItem(g)
 				} else {
 					item = p.parseSingleDirective()
 				}
@@ -154,11 +157,11 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 				item = p.parseSingleDirective()
 			}
 		} else {
-			item = g.parseItem(p)
+			item = p.parseGrammarItem(g)
 		}
 		if p.pos == startPos {
 			if recovered := p.recoverStuckItem(g); recovered != nil {
-				items = append(items, recovered)
+				items = p.appendNode(items, recovered)
 			}
 			continue
 		}
@@ -174,10 +177,29 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 				p.setField(wrapper, "body", body)
 				item = wrapper
 			}
-			items = append(items, item)
+			items = p.appendNode(items, item)
 		}
 	}
 	return items
+}
+
+func (p *parser) itemSequenceStopped(g itemGrammar) bool {
+	if g.abortAtStop {
+		p.abortIfSharedAcrossBranch()
+	}
+	if g.stopKind != token.Invalid && p.at(g.stopKind) {
+		return true
+	}
+	return g.stop != nil && g.stop(p)
+}
+
+func (p *parser) parseGrammarItem(g itemGrammar) *Node {
+	item := g.parseItem(p)
+	if g.commaSeparated && p.at(token.Comma) {
+		comma := p.advance()
+		p.mergeCommaTrivia(item, comma)
+	}
+	return item
 }
 
 func (p *parser) attachSharedAlternative(conditional *Node) {
@@ -260,28 +282,16 @@ func conditionalFunctionHeaders(region *Node) bool {
 	return visit(region) && found
 }
 
-func parseCommaListItem(parseOne func(*parser) *Node) func(*parser) *Node {
-	return func(p *parser) *Node {
-		item := parseOne(p)
-		if p.at(token.Comma) {
-			comma := p.advance()
-			p.mergeCommaTrivia(item, comma)
-		}
-		return item
-	}
-}
-
 func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.Kind, parseItem func(*parser) *Node) *Node {
 	node := p.storeNode(Node{Kind: kind, Start: open.Start.Offset, Leading: open.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
-		parseItem:              parseCommaListItem(parseItem),
+		parseItem:              parseItem,
+		commaSeparated:         true,
 		parseUnknownHashAsItem: true,
 		recoveryContext:        "list item",
 		recoveryExpected:       []token.Kind{token.Comma, closeTok},
-		stop: func(p *parser) bool {
-			p.abortIfSharedAcrossBranch()
-			return p.at(closeTok)
-		},
+		stopKind:               closeTok,
+		abortAtStop:            true,
 	})
 	for _, it := range items {
 		p.addChild(node, it)
@@ -304,7 +314,7 @@ func (p *parser) mergeCommaTrivia(item *Node, comma token.Token) {
 	if len(comma.LeadingTrivia) == 0 && len(comma.TrailingTrivia) == 0 {
 		return
 	}
-	merged := p.trivia.alloc(len(item.Trailing) + len(comma.LeadingTrivia) + len(comma.TrailingTrivia))
+	merged := p.storage.trivia.alloc(len(item.Trailing) + len(comma.LeadingTrivia) + len(comma.TrailingTrivia))
 	offset := copy(merged, item.Trailing)
 	offset += copy(merged[offset:], comma.LeadingTrivia)
 	copy(merged[offset:], comma.TrailingTrivia)

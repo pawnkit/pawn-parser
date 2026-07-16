@@ -50,3 +50,34 @@ func TestParseTokensAcceptsEmptyInput(t *testing.T) {
 		t.Fatalf("tokens = %#v, want one EOF", file.Tokens)
 	}
 }
+
+func TestParseOptionsDiscardTokensAndTrivia(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("// leading\nmain() { return 1; } // trailing\n")
+	tokens := lexer.Tokenize(source)
+	file := ParseTokensWithOptions(source, tokens, ParseOptions{
+		DiscardTokens: true,
+		DiscardTrivia: true,
+	})
+	if file.Root == nil || file.HasParseErrors() {
+		t.Fatal("lightweight parse did not produce a valid tree")
+	}
+	if file.Tokens != nil {
+		t.Fatal("lightweight parse retained tokens")
+	}
+	var visit func(*Node)
+	visit = func(node *Node) {
+		if len(node.Leading) != 0 || len(node.Trailing) != 0 ||
+			len(node.Tok.LeadingTrivia) != 0 || len(node.Tok.TrailingTrivia) != 0 {
+			t.Fatalf("node %s retained trivia", node.Kind)
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(file.Root)
+	if len(tokens) == 0 || len(tokens[0].LeadingTrivia) == 0 {
+		t.Fatal("ParseTokensWithOptions modified caller-owned tokens")
+	}
+}
