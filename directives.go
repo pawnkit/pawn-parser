@@ -4,6 +4,7 @@ import "github.com/pawnkit/pawn-parser/token"
 
 type itemGrammar[N comparable, S nodeSink[N]] struct {
 	parseItem                 func(p *parser[N, S]) N
+	parseMode                 itemParseMode
 	stop                      func(p *parser[N, S]) bool
 	stopKind                  token.Kind
 	abortAtStop               bool
@@ -13,6 +14,18 @@ type itemGrammar[N comparable, S nodeSink[N]] struct {
 	recoveryContext           string
 	recoveryExpected          []token.Kind
 }
+
+type itemParseMode uint8
+
+const (
+	itemParseCustom itemParseMode = iota
+	itemParseDeclaration
+	itemParseStatement
+	itemParseParameter
+	itemParseDeclarator
+	itemParseEnumEntry
+	itemParseSwitchClause
+)
 
 func lastTokenEndsLine(t token.Token) bool {
 	for _, tr := range t.TrailingTrivia {
@@ -194,7 +207,23 @@ func (p *parser[N, S]) itemSequenceStopped(g itemGrammar[N, S]) bool {
 }
 
 func (p *parser[N, S]) parseGrammarItem(g itemGrammar[N, S]) N {
-	item := g.parseItem(p)
+	var item N
+	switch g.parseMode {
+	case itemParseDeclaration:
+		item = p.parseDeclaration()
+	case itemParseStatement:
+		item = p.parseStatement()
+	case itemParseParameter:
+		item = p.parseParameter()
+	case itemParseDeclarator:
+		item = p.parseDeclarator()
+	case itemParseEnumEntry:
+		item = p.parseEnumEntry()
+	case itemParseSwitchClause:
+		item = p.parseSwitchClause()
+	default:
+		item = g.parseItem(p)
+	}
 	if g.commaSeparated && p.at(token.Comma) {
 		comma := p.advance()
 		p.mergeCommaTrivia(item, comma)

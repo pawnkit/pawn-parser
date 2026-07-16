@@ -11,7 +11,7 @@ func (p *parser[N, S]) parseParameterList() N {
 	lp := p.advance()
 	node := p.sink.Store(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem:      (*parser[N, S]).parseParameter,
+		parseMode:      itemParseParameter,
 		stopKind:       token.RParen,
 		abortAtStop:    true,
 		commaSeparated: true,

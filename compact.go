@@ -31,6 +31,8 @@ type CompactTree struct {
 	Nodes    []CompactNode
 	Children []uint32
 	Fields   []CompactField
+	Errors   []CompactError
+	Expected []token.Kind
 	Root     uint32
 }
 
@@ -52,6 +54,17 @@ type CompactNode struct {
 
 	HasError    bool
 	MissingSemi bool
+	HasRaw      bool
+}
+
+// CompactError stores sparse recovery data.
+type CompactError struct {
+	Message       string
+	Node          uint32
+	Offset        uint32
+	Found         token.Kind
+	ExpectedStart uint32
+	ExpectedCount uint32
 }
 
 // Text returns the node's exact source text.
@@ -94,15 +107,35 @@ func (t *CompactTree) Field(node uint32, name string) (uint32, bool) {
 
 // ParseCompact parses source into a compact CST.
 func ParseCompact(source []byte, options ParseOptions) *CompactFile {
-	return parseTokensCompact(source, lexer.Tokenize(source), options)
+	if options.DiscardTokens {
+		return parseTokensCompact(source, lexer.Tokenize(source), options, nil, nil)
+	}
+	toks, compact, trivia := lexer.TokenizeCompact(source, !options.DiscardTrivia)
+	return parseTokensCompact(source, toks, options, compact, trivia)
 }
 
 // ParseTokensCompact parses tokens into a compact CST.
 func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions) *CompactFile {
-	return parseTokensCompact(source, toks, options)
+	return parseTokensCompact(source, toks, options, nil, nil)
 }
 
-func parseTokensCompact(source []byte, toks []token.Token, options ParseOptions) *CompactFile {
+// ParseForLinter parses source without retaining tokens or trivia.
+func ParseForLinter(source []byte) *CompactFile {
+	return ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+}
+
+// ParseTokensForLinter parses an existing token stream for linting.
+func ParseTokensForLinter(source []byte, toks []token.Token) *CompactFile {
+	return ParseTokensCompact(source, toks, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+}
+
+func parseTokensCompact(
+	source []byte,
+	toks []token.Token,
+	options ParseOptions,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+) *CompactFile {
 	if len(toks) == 0 || toks[len(toks)-1].Kind != token.EOF {
 		end := token.Position{Offset: len(source)}
 		toks = append(append([]token.Token(nil), toks...), token.Token{Kind: token.EOF, Start: end, End: end})
@@ -120,56 +153,41 @@ func parseTokensCompact(source []byte, toks []token.Token, options ParseOptions)
 		}
 		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
 	})
-	tokens, trivia, origins, macroNames := compactTokens(toks, options)
+	tokens, trivia := retainedTokens, retainedTrivia
+	origins, macroNames := []CompactOrigin{{}}, []string{""}
+	if tokens == nil && !options.DiscardTokens {
+		tokens, trivia, origins, macroNames = compactTokens(toks, options)
+	}
 	return &CompactFile{
 		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames,
 		Tree: sink.tree(root), Broken: p.broken, Diagnostics: p.diagnostics,
 	}
 }
 
-// CompactToken stores one token.
-type CompactToken struct {
-	Kind token.Kind
-
-	Start CompactPosition
-	End   CompactPosition
-
-	LeadingStart  uint32
-	LeadingCount  uint32
-	TrailingStart uint32
-	TrailingCount uint32
-	Origin        uint32
-}
+// CompactToken stores one token with indexed metadata.
+type CompactToken = token.CompactToken
 
 // CompactTrivia stores one trivia span.
-type CompactTrivia struct {
-	Kind  token.Kind
-	Start CompactPosition
-	End   CompactPosition
-}
+type CompactTrivia = token.CompactTrivia
 
-// CompactPosition stores a source position.
-type CompactPosition struct {
-	Offset uint32
-	Line   uint32
-	Col    uint32
-}
+// CompactPosition stores a compact source position.
+type CompactPosition = token.CompactPosition
 
 // CompactOrigin stores one origin link.
-type CompactOrigin struct {
-	File   uint32
-	Start  CompactPosition
-	End    CompactPosition
-	Macro  uint32
-	Parent uint32
-}
+type CompactOrigin = token.CompactOrigin
 
 func compactTokens(tokens []token.Token, options ParseOptions) ([]CompactToken, []CompactTrivia, []CompactOrigin, []string) {
 	if options.DiscardTokens {
 		return nil, nil, nil, nil
 	}
 	compact := make([]CompactToken, len(tokens))
-	var trivia []CompactTrivia
+	triviaCount := 0
+	if !options.DiscardTrivia {
+		for i := range tokens {
+			triviaCount += len(tokens[i].LeadingTrivia) + len(tokens[i].TrailingTrivia)
+		}
+	}
+	trivia := make([]CompactTrivia, 0, triviaCount)
 	origins := []CompactOrigin{{}}
 	macroNames := []string{""}
 	originIDs := make(map[*token.Origin]uint32)

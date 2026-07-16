@@ -20,6 +20,9 @@ func (f *CompactFile) Expand() *File {
 			HasError: compact.HasError, MissingSemi: compact.MissingSemi,
 			Leading: tok.LeadingTrivia, Trailing: tok.TrailingTrivia,
 		}
+		if compact.HasRaw && compact.Start <= compact.End && compact.End <= uint32(len(f.Source)) { // #nosec G115 -- Compact offsets are uint32.
+			nodes[i].Raw = f.Source[compact.Start:compact.End]
+		}
 	}
 	for i, compact := range f.Tree.Nodes {
 		node := nodes[i]
@@ -32,6 +35,19 @@ func (f *CompactFile) Expand() *File {
 		}
 		for _, field := range f.Tree.Fields[compact.FieldStart : compact.FieldStart+compact.FieldCount] {
 			setExpandedField(node, field.ID, nodes[field.Node])
+		}
+	}
+	for _, compact := range f.Tree.Errors {
+		if compact.Node >= uint32(len(nodes)) { // #nosec G115 -- Compact indexes are uint32.
+			continue
+		}
+		node := nodes[compact.Node]
+		node.ErrorMessage = compact.Message
+		node.ErrorOffset = int(compact.Offset)
+		node.ErrorFound = compact.Found
+		end := compact.ExpectedStart + compact.ExpectedCount
+		if end >= compact.ExpectedStart && end <= uint32(len(f.Tree.Expected)) { // #nosec G115 -- Compact indexes are uint32.
+			node.ErrorExpected = append([]token.Kind(nil), f.Tree.Expected[compact.ExpectedStart:end]...)
 		}
 	}
 	var root *Node

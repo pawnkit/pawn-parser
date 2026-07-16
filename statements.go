@@ -150,13 +150,11 @@ func (p *parser[N, S]) parseBlock() N {
 	lb := p.advance() // '{'
 	node := p.sink.Store(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem:        func(p *parser[N, S]) N { return p.parseStatement() },
+		parseMode:        itemParseStatement,
 		recoveryContext:  "statement",
 		recoveryExpected: []token.Kind{token.Semicolon, token.RBrace},
-		stop: func(p *parser[N, S]) bool {
-			p.abortIfSharedAcrossBranch()
-			return p.at(token.RBrace)
-		},
+		stopKind:         token.RBrace,
+		abortAtStop:      true,
 	})
 	for _, it := range items {
 		p.sink.AddChild(node, it)

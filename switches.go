@@ -15,11 +15,9 @@ func (p *parser[N, S]) parseSwitchStatement() N {
 	}
 	p.advance() // '{'
 	clauses := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem: func(p *parser[N, S]) N { return p.parseSwitchClause() },
-		stop: func(p *parser[N, S]) bool {
-			p.abortIfSharedAcrossBranch()
-			return p.at(token.RBrace)
-		},
+		parseMode:   itemParseSwitchClause,
+		stopKind:    token.RBrace,
+		abortAtStop: true,
 	})
 	for _, c := range clauses {
 		p.sink.AddChild(node, c)

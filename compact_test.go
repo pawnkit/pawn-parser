@@ -67,6 +67,28 @@ func TestParseCompactDiagnosticsMatchPointerParser(t *testing.T) {
 	}
 }
 
+func TestParseForLinterDiscardsTokensAndTrivia(t *testing.T) {
+	t.Parallel()
+	file := ParseForLinter([]byte("main() {}\n"))
+	if len(file.Tree.Nodes) == 0 || file.Tokens != nil || file.Trivia != nil {
+		t.Fatal("ParseForLinter retained token data")
+	}
+}
+
+func TestParseCompactLexerRetentionMatchesTokenConversion(t *testing.T) {
+	t.Parallel()
+	source := []byte("// lead\nmain() { return value; } // tail\n")
+	wantTokens, wantTrivia, wantOrigins, wantMacros := compactTokens(lexer.Tokenize(source), ParseOptions{})
+	got := ParseCompact(source, ParseOptions{})
+	if !reflect.DeepEqual(got.Tokens, wantTokens) {
+		t.Fatalf("native compact tokens differ:\n got %#v\nwant %#v", got.Tokens, wantTokens)
+	}
+	if !reflect.DeepEqual(got.Trivia, wantTrivia) || !reflect.DeepEqual(got.Origins, wantOrigins) ||
+		!reflect.DeepEqual(got.MacroNames, wantMacros) {
+		t.Fatal("native compact lexer metadata differs from token conversion")
+	}
+}
+
 func assertEquivalentNodes(t *testing.T, want, got *Node) {
 	t.Helper()
 	if want == nil || got == nil {
@@ -75,9 +97,7 @@ func assertEquivalentNodes(t *testing.T, want, got *Node) {
 		}
 		return
 	}
-	if want.Kind != got.Kind || want.Start != got.Start || want.End != got.End ||
-		want.Tok.Kind != got.Tok.Kind || want.Tok.Start != got.Tok.Start || want.Tok.End != got.Tok.End ||
-		want.HasError != got.HasError || want.MissingSemi != got.MissingSemi {
+	if !equivalentNodeHeader(want, got) {
 		t.Fatalf("expanded %s node differs", want.Kind)
 	}
 	if len(want.Children) != len(got.Children) {
@@ -92,6 +112,15 @@ func assertEquivalentNodes(t *testing.T, want, got *Node) {
 			t.Fatalf("expanded %s field %q differs", want.Kind, name)
 		}
 	}
+}
+
+func equivalentNodeHeader(want, got *Node) bool {
+	return want.Kind == got.Kind && want.Start == got.Start && want.End == got.End &&
+		want.Tok.Kind == got.Tok.Kind && want.Tok.Start == got.Tok.Start && want.Tok.End == got.Tok.End &&
+		want.HasError == got.HasError && want.MissingSemi == got.MissingSemi &&
+		string(want.Raw) == string(got.Raw) && want.ErrorMessage == got.ErrorMessage &&
+		want.ErrorOffset == got.ErrorOffset && want.ErrorFound == got.ErrorFound &&
+		reflect.DeepEqual(want.ErrorExpected, got.ErrorExpected)
 }
 
 func TestParseTokensCompactPreservesOrigins(t *testing.T) {

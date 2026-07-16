@@ -38,7 +38,7 @@ func (p *parser[N, S]) parseVariableDeclarationWithQualifiers(quals []N) N {
 
 func (p *parser[N, S]) parseDeclaratorList() []N {
 	return p.parseItemSequence(itemGrammar[N, S]{
-		parseItem:                 (*parser[N, S]).parseDeclarator,
+		parseMode:                 itemParseDeclarator,
 		stopKind:                  token.Semicolon,
 		commaSeparated:            true,
 		preserveRecoverySemicolon: true,
@@ -156,7 +156,7 @@ func (p *parser[N, S]) parseEnumDeclaration(quals []N) N {
 	lb := p.advance()
 	body := p.sink.Store(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem:      (*parser[N, S]).parseEnumEntry,
+		parseMode:      itemParseEnumEntry,
 		stopKind:       token.RBrace,
 		abortAtStop:    true,
 		commaSeparated: true,

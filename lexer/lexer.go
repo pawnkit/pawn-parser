@@ -25,6 +25,18 @@ func RawTokens(src []byte) []token.Token {
 // Tokenize tokenizes src, attaching leading and trailing trivia (whitespace/comments)
 // to each token.
 func Tokenize(src []byte) []token.Token {
+	tokens, trivia := buildTokens(src)
+	return tokens.finish(trivia.finish())
+}
+
+// TokenizeCompact tokenizes src and builds compact retention records.
+func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
+	tokens, trivia := buildTokens(src)
+	fullTrivia := trivia.finish()
+	return tokens.finishCompact(fullTrivia, retainTrivia)
+}
+
+func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 	s := newScanner(src)
 	var tokens tokenBuilder
 	var trivia triviaBuilder
@@ -65,7 +77,7 @@ func Tokenize(src []byte) []token.Token {
 		tokens.append(builtToken{kind: r.kind, start: r.start, end: r.end, trivia: attached})
 	}
 
-	return tokens.finish(trivia.finish())
+	return tokens, trivia
 }
 
 const maxInitialTokenCapacity = 4096
@@ -213,6 +225,64 @@ func (b *tokenBuilder) finish(trivia []token.Trivia) []token.Token {
 		releaseBuiltTokenBlock(block)
 	}
 	return tokens
+}
+
+func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
+	tokens := make([]token.Token, b.count)
+	compact := make([]token.CompactToken, b.count)
+	var compactTrivia []token.CompactTrivia
+	if retainTrivia {
+		compactTrivia = make([]token.CompactTrivia, len(trivia))
+		for i, item := range trivia {
+			compactTrivia[i] = token.CompactTrivia{
+				Kind: item.Kind, Start: compactPosition(item.Start), End: compactPosition(item.End),
+			}
+		}
+	}
+	output := 0
+	for blockIndex, block := range b.blocks {
+		data := block.data
+		if blockIndex == len(b.blocks)-1 {
+			data = data[:b.next]
+		}
+		for _, built := range data {
+			r := built.trivia
+			tokens[output] = token.Token{
+				Kind: built.kind, Start: built.start, End: built.end,
+				LeadingTrivia:  triviaSlice(trivia, r.leadingStart, r.trailingStart),
+				TrailingTrivia: triviaSlice(trivia, r.trailingStart, r.trailingEnd),
+			}
+			compact[output] = token.CompactToken{
+				Kind: built.kind, Start: compactPosition(built.start), End: compactPosition(built.end),
+			}
+			if retainTrivia {
+				if r.leadingStart != r.trailingStart {
+					compact[output].LeadingStart = compactUint(r.leadingStart)
+					compact[output].LeadingCount = compactUint(r.trailingStart - r.leadingStart)
+				}
+				if r.trailingStart != r.trailingEnd {
+					compact[output].TrailingStart = compactUint(r.trailingStart)
+					compact[output].TrailingCount = compactUint(r.trailingEnd - r.trailingStart)
+				}
+			}
+			output++
+		}
+		releaseBuiltTokenBlock(block)
+	}
+	return tokens, compact, compactTrivia
+}
+
+func compactPosition(position token.Position) token.CompactPosition {
+	return token.CompactPosition{
+		Offset: compactUint(position.Offset), Line: compactUint(position.Line), Col: compactUint(position.Col),
+	}
+}
+
+func compactUint(value int) uint32 {
+	if value < 0 || uint64(value) > uint64(^uint32(0)) {
+		panic("compact token data exceeds uint32")
+	}
+	return uint32(value) // #nosec G115 -- Bounds checked above.
 }
 
 func initialTokenCapacity(sourceLen int) int {

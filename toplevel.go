@@ -3,8 +3,7 @@ package parser
 func (p *parser[N, S]) parseSourceFile() N {
 	root := p.sink.Store(Node{Kind: KindSourceFile})
 	items := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem:       func(p *parser[N, S]) N { return p.parseDeclaration() },
-		stop:            func(p *parser[N, S]) bool { return p.atEnd() },
+		parseMode:       itemParseDeclaration,
 		recoveryContext: "declaration",
 	})
 	for _, it := range items {

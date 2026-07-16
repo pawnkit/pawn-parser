@@ -296,8 +296,8 @@ func (p *parser[N, S]) finishSharedConditional(start int, leading []token.Trivia
 	}
 	body := p.sink.Store(Node{Kind: KindBlock, Start: last.End.Offset})
 	items := p.parseItemSequence(itemGrammar[N, S]{
-		parseItem: func(p *parser[N, S]) N { return p.parseStatement() },
-		stop:      func(p *parser[N, S]) bool { return p.at(token.RBrace) },
+		parseMode: itemParseStatement,
+		stopKind:  token.RBrace,
 	})
 	for _, item := range items {
 		p.sink.AddChild(body, item)
