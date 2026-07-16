@@ -234,6 +234,20 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	if file.MacroNames[file.Origins[origin].Macro] != "VALUE" {
 		t.Fatal("origin macro was not preserved")
 	}
+	var identifier SyntaxNode
+	for id, node := range file.Tree.Nodes {
+		if node.Kind == KindIdentifier {
+			identifier = SyntaxNode{file: file, id: uint32(id)} // #nosec G115 -- Test tree is small.
+			break
+		}
+	}
+	syntaxOrigin, ok := identifier.Token().Origin()
+	if !ok || syntaxOrigin.Macro() != "VALUE" || syntaxOrigin.Span().File != 2 {
+		t.Fatal("syntax token origin was not preserved")
+	}
+	if syntaxParent, ok := syntaxOrigin.Parent(); !ok || syntaxParent.Span().File != 1 {
+		t.Fatal("syntax token parent origin was not preserved")
+	}
 	parentID := file.Origins[origin].Parent
 	if parentID == 0 || file.Origins[parentID].File != 1 {
 		t.Fatal("parent origin was not preserved")

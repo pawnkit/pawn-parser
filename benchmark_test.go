@@ -116,3 +116,24 @@ func BenchmarkTokensOnlyLargeFile(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkTypedSyntaxTraversal(b *testing.B) {
+	file := ParseWithProfile(benchmarkSource(b), ProfileAnalysis)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		count := 0
+		declarations := file.Syntax().Declarations()
+		for declarations.Next() {
+			if function, ok := AsFunction(declarations.Declaration()); ok {
+				parameters := function.Parameters()
+				for parameters.Next() {
+					count++
+				}
+			}
+		}
+		if count == 0 {
+			b.Fatal("typed traversal found no parameters")
+		}
+	}
+}
