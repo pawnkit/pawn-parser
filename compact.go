@@ -15,13 +15,18 @@ type CompactFile struct {
 	Trivia      []CompactTrivia
 	Origins     []CompactOrigin
 	MacroNames  []string
+	Lines       token.LineMap
 	Tree        CompactTree
 	Broken      bool
 	Diagnostics []Diagnostic
+	Profile     Profile
 }
 
 // HasParseErrors reports whether compact parsing produced a syntax error.
 func (f *CompactFile) HasParseErrors() bool {
+	if f != nil && f.Profile == ProfileTokensOnly {
+		return false
+	}
 	return f == nil || len(f.Tree.Nodes) == 0 || f.Broken ||
 		f.Tree.Nodes[f.Tree.Root].HasError || len(f.Diagnostics) != 0
 }
@@ -69,10 +74,20 @@ type CompactError struct {
 
 // Text returns the node's exact source text.
 func (n CompactNode) Text(source []byte) string {
+	return string(n.Bytes(source))
+}
+
+// Bytes returns the node's exact source bytes without allocating.
+func (n CompactNode) Bytes(source []byte) []byte {
 	if n.End > compactUint(len(source)) || n.Start > n.End {
-		return ""
+		return nil
 	}
-	return string(source[int(n.Start):int(n.End)])
+	return source[int(n.Start):int(n.End)]
+}
+
+// Range returns the node's half-open source byte range.
+func (n CompactNode) Range() ByteRange {
+	return ByteRange{Start: int(n.Start), End: int(n.End)}
 }
 
 // CompactField maps a field name to a node.
@@ -108,7 +123,8 @@ func (t *CompactTree) Field(node uint32, name string) (uint32, bool) {
 // ParseCompact parses source into a compact CST.
 func ParseCompact(source []byte, options ParseOptions) *CompactFile {
 	if options.DiscardTokens {
-		return parseTokensCompact(source, lexer.Tokenize(source), options, nil, nil)
+		toks, lines := lexer.TokenizeSyntax(source)
+		return parseCompact(source, newSyntaxParserTokens(toks), options, nil, nil, lines)
 	}
 	toks, compact, trivia := lexer.TokenizeCompact(source, !options.DiscardTrivia)
 	return parseTokensCompact(source, toks, options, compact, trivia)
@@ -121,12 +137,16 @@ func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions)
 
 // ParseForLinter parses source without retaining tokens or trivia.
 func ParseForLinter(source []byte) *CompactFile {
-	return ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file.Profile = ProfileAnalysis
+	return file
 }
 
 // ParseTokensForLinter parses an existing token stream for linting.
 func ParseTokensForLinter(source []byte, toks []token.Token) *CompactFile {
-	return ParseTokensCompact(source, toks, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file := ParseTokensCompact(source, toks, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file.Profile = ProfileAnalysis
+	return file
 }
 
 func parseTokensCompact(
@@ -140,7 +160,18 @@ func parseTokensCompact(
 		end := token.Position{Offset: len(source)}
 		toks = append(append([]token.Token(nil), toks...), token.Token{Kind: token.EOF, Start: end, End: end})
 	}
-	sink := newCompactNodeSink(len(toks))
+	return parseCompact(source, newParserTokens(toks), options, retainedTokens, retainedTrivia, token.LineMap{})
+}
+
+func parseCompact(
+	source []byte,
+	toks parserTokens,
+	options ParseOptions,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+	lines token.LineMap,
+) *CompactFile {
+	sink := newCompactNodeSink(toks.len(), !options.DiscardTrivia)
 	p := &parser[uint32, compactNodeSink]{
 		source: source, toks: toks, sink: sink,
 	}
@@ -153,13 +184,20 @@ func parseTokensCompact(
 		}
 		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
 	})
+	if len(lines.Starts) != 0 {
+		for i := range p.diagnostics {
+			found := &p.diagnostics[i].Found
+			found.Start = lines.Position(compactUint(found.Start.Offset))
+			found.End = lines.Position(compactUint(found.End.Offset))
+		}
+	}
 	tokens, trivia := retainedTokens, retainedTrivia
 	origins, macroNames := []CompactOrigin{{}}, []string{""}
 	if tokens == nil && !options.DiscardTokens {
-		tokens, trivia, origins, macroNames = compactTokens(toks, options)
+		tokens, trivia, origins, macroNames = compactTokens(toks.full, options)
 	}
 	return &CompactFile{
-		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames,
+		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames, Lines: lines,
 		Tree: sink.tree(root), Broken: p.broken, Diagnostics: p.diagnostics,
 	}
 }

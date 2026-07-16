@@ -46,18 +46,24 @@ type nodeSink[N comparable] interface {
 
 	Mark() sinkMark
 	Rewind(sinkMark)
+	RetainsTrivia() bool
 	AllocTrivia(int) []token.Trivia
 }
 
 type sinkMark struct {
-	storage    parserStorageMark
-	nodes      int
-	edgeCount  int
-	fieldCount int
-	errors     int
-	children   compactArenaMark
-	fields     compactArenaMark
-	trivia     nodeArenaMark
+	storage      parserStorageMark
+	nodes        int
+	edgeCount    int
+	fieldCount   int
+	errors       int
+	nodeTrivia   int
+	nodeChildren int
+	childSpills  int
+	nodeFields   int
+	fieldSpills  int
+	children     compactArenaMark
+	fields       compactArenaMark
+	trivia       nodeArenaMark
 }
 
 type pointerNodeSink struct {
@@ -142,6 +148,8 @@ func (s pointerNodeSink) Mark() sinkMark {
 func (s pointerNodeSink) Rewind(mark sinkMark) {
 	s.storage.rewind(mark.storage)
 }
+
+func (pointerNodeSink) RetainsTrivia() bool { return true }
 
 func (s pointerNodeSink) AllocTrivia(size int) []token.Trivia {
 	return s.storage.trivia.alloc(size)

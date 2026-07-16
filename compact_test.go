@@ -23,6 +23,13 @@ func TestParseCompactPreservesTreeShapeAndFields(t *testing.T) {
 	if got := compactFile.Tree.Nodes[compactFile.Tree.Root].Text(source); got != string(source) {
 		t.Fatalf("compact root text = %q", got)
 	}
+	root := compactFile.Tree.Nodes[compactFile.Tree.Root]
+	if got := root.Bytes(source); string(got) != string(source) {
+		t.Fatalf("compact root bytes = %q", got)
+	}
+	if got := root.Range(); got != (ByteRange{Start: 0, End: len(source)}) {
+		t.Fatalf("compact root range = %+v", got)
+	}
 
 	pointerCount := 0
 	var count func(*Node)
@@ -73,8 +80,8 @@ func TestCompactTreeContainsOnlyReachableNodes(t *testing.T) {
 		t.Fatal("compact tree retained spare node capacity")
 	}
 	tokens := lexer.Tokenize(source)
-	sink := newCompactNodeSink(len(tokens))
-	internal := &parser[uint32, compactNodeSink]{source: source, toks: tokens, sink: sink}
+	sink := newCompactNodeSink(len(tokens), false)
+	internal := &parser[uint32, compactNodeSink]{source: source, toks: newParserTokens(tokens), sink: sink}
 	internal.parseSourceFile()
 	if allocated := len(sink.builder.nodes) - 1; allocated != pointerCount {
 		t.Fatalf("compact arena nodes = %d, reachable pointer nodes = %d", allocated, pointerCount)
@@ -120,6 +127,80 @@ func TestParseForLinterDiscardsTokensAndTrivia(t *testing.T) {
 	file := ParseForLinter([]byte("main() {}\n"))
 	if len(file.Tree.Nodes) == 0 || file.Tokens != nil || file.Trivia != nil {
 		t.Fatal("ParseForLinter retained token data")
+	}
+}
+
+func TestParseForLinterRestoresDiagnosticPositions(t *testing.T) {
+	t.Parallel()
+	source := []byte("main() {\n    return +;\n}\n")
+	want := Parse(source)
+	got := ParseForLinter(source)
+	if len(got.Diagnostics) != len(want.Diagnostics) || len(got.Diagnostics) == 0 {
+		t.Fatalf("compact diagnostics = %d, want %d", len(got.Diagnostics), len(want.Diagnostics))
+	}
+	for i := range want.Diagnostics {
+		if got.Diagnostics[i].Found.Start != want.Diagnostics[i].Found.Start ||
+			got.Diagnostics[i].Found.End != want.Diagnostics[i].Found.End {
+			t.Fatalf("diagnostic %d position = %+v:%+v, want %+v:%+v", i,
+				got.Diagnostics[i].Found.Start, got.Diagnostics[i].Found.End,
+				want.Diagnostics[i].Found.Start, want.Diagnostics[i].Found.End)
+		}
+	}
+}
+
+func TestParseProfiles(t *testing.T) {
+	t.Parallel()
+	source := []byte("main() { // comment\n    return;\n}\n")
+	lossless := ParseWithProfile(source, ProfileLossless)
+	if len(lossless.Tree.Nodes) == 0 || len(lossless.Tokens) == 0 || len(lossless.Trivia) == 0 {
+		t.Fatal("lossless profile omitted retained syntax")
+	}
+	analysis := ParseWithProfile(source, ProfileAnalysis)
+	if len(analysis.Tree.Nodes) == 0 || analysis.Tokens != nil || analysis.Trivia != nil {
+		t.Fatal("analysis profile retained tokens or omitted syntax")
+	}
+	tokens := ParseWithProfile(source, ProfileTokensOnly)
+	if len(tokens.Tree.Nodes) != 0 || len(tokens.Tokens) == 0 || len(tokens.Trivia) == 0 || tokens.HasParseErrors() {
+		t.Fatal("tokens-only profile built syntax or omitted tokens")
+	}
+}
+
+func TestCompactChildEventsInlineAndSpill(t *testing.T) {
+	t.Parallel()
+	sink := newCompactNodeSink(16, false)
+	parent := sink.New(KindArgumentList)
+	first := sink.New(KindIdentifier)
+	second := sink.New(KindLiteral)
+	third := sink.New(KindIdentifier)
+	sink.AddChild(parent, first)
+	sink.AddChild(parent, second)
+	if data := sink.childData(parent); data == nil || data.spill != 0 {
+		t.Fatal("two children did not remain inline")
+	}
+	sink.AddChild(parent, third)
+	children := sink.Children(parent)
+	if len(children) != 3 || children[0] != first || children[1] != second || children[2] != third {
+		t.Fatalf("spilled children = %v", children)
+	}
+	sink.SetField(parent, fieldLeft, first)
+	sink.SetField(parent, fieldRight, second)
+	if data := sink.fieldData(parent); data == nil || data.spill != 0 {
+		t.Fatal("two fields did not remain inline")
+	}
+	sink.SetField(parent, fieldValue, third)
+	if sink.Field(parent, fieldLeft) != first || sink.Field(parent, fieldRight) != second ||
+		sink.Field(parent, fieldValue) != third {
+		t.Fatal("spilled fields changed field lookup")
+	}
+
+	mark := sink.Mark()
+	speculative := sink.New(KindRaw)
+	sink.AddChild(speculative, sink.New(KindIdentifier))
+	sink.Rewind(mark)
+	if len(sink.builder.nodes) != mark.nodes || len(sink.builder.nodeChildren) != mark.nodeChildren ||
+		len(sink.builder.childSpills) != mark.childSpills || len(sink.builder.nodeFields) != mark.nodeFields ||
+		len(sink.builder.fieldSpills) != mark.fieldSpills {
+		t.Fatal("event rewind retained speculative storage")
 	}
 }
 
@@ -191,6 +272,20 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	}
 	if file.MacroNames[file.Origins[origin].Macro] != "VALUE" {
 		t.Fatal("origin macro was not preserved")
+	}
+	var identifier SyntaxNode
+	for id, node := range file.Tree.Nodes {
+		if node.Kind == KindIdentifier {
+			identifier = SyntaxNode{file: file, id: uint32(id)} // #nosec G115 -- Test tree is small.
+			break
+		}
+	}
+	syntaxOrigin, ok := identifier.Token().Origin()
+	if !ok || syntaxOrigin.Macro() != "VALUE" || syntaxOrigin.Span().File != 2 {
+		t.Fatal("syntax token origin was not preserved")
+	}
+	if syntaxParent, ok := syntaxOrigin.Parent(); !ok || syntaxParent.Span().File != 1 {
+		t.Fatal("syntax token parent origin was not preserved")
 	}
 	parentID := file.Origins[origin].Parent
 	if parentID == 0 || file.Origins[parentID].File != 1 {

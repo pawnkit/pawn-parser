@@ -100,7 +100,7 @@ func retainedTokens(toks []token.Token, options ParseOptions) []token.Token {
 
 type parser[N comparable, S nodeSink[N]] struct {
 	source    []byte
-	toks      []token.Token
+	toks      parserTokens
 	pos       int
 	broken    bool
 	condDepth int
@@ -120,6 +120,82 @@ type parser[N comparable, S nodeSink[N]] struct {
 
 	diagnosticRanges []diagnosticRange
 	diagnosticPoints []int
+
+	angleClose      []bool
+	angleCloseBuilt bool
+}
+
+type parserTokens struct {
+	full   []token.Token
+	syntax []token.SyntaxToken
+}
+
+func newParserTokens(tokens []token.Token) parserTokens {
+	return parserTokens{full: tokens}
+}
+
+func newSyntaxParserTokens(tokens []token.SyntaxToken) parserTokens {
+	return parserTokens{syntax: tokens}
+}
+
+var (
+	presentTrivia = [...]token.Trivia{{Kind: token.Whitespace}}
+	lineTrivia    = [...]token.Trivia{{Kind: token.Newline}}
+)
+
+func (t parserTokens) len() int {
+	if t.full == nil {
+		return len(t.syntax)
+	}
+	return len(t.full)
+}
+
+func (t parserTokens) at(index int) token.Token {
+	if t.full == nil {
+		item := t.syntax[index]
+		return token.Token{
+			Kind:           item.Kind,
+			Start:          token.Position{Offset: int(item.Start)},
+			End:            token.Position{Offset: int(item.End)},
+			LeadingTrivia:  compactParserTrivia(item.LeadingFlags),
+			TrailingTrivia: compactParserTrivia(item.TrailingFlags),
+		}
+	}
+	return t.full[index]
+}
+
+func (t parserTokens) kind(index int) token.Kind {
+	if t.full == nil {
+		return t.syntax[index].Kind
+	}
+	return t.full[index].Kind
+}
+
+func (t parserTokens) endOffset(index int) int {
+	if t.full == nil {
+		return int(t.syntax[index].End)
+	}
+	return t.full[index].End.Offset
+}
+
+func (t parserTokens) copyTo(dst []token.Token, start, end int) {
+	if t.full == nil {
+		for i := range end - start {
+			dst[i] = t.at(start + i)
+		}
+		return
+	}
+	copy(dst, t.full[start:end])
+}
+
+func compactParserTrivia(flags token.TriviaFlags) []token.Trivia {
+	if flags&token.TriviaEndsLine != 0 {
+		return lineTrivia[:]
+	}
+	if flags&token.TriviaPresent != 0 {
+		return presentTrivia[:]
+	}
+	return nil
 }
 
 type parserStorage struct {
@@ -142,7 +218,7 @@ func newPointerParser(source []byte, toks []token.Token, storage *parserStorage)
 	if storage == nil {
 		storage = new(parserStorage)
 	}
-	p := &parser[*Node, pointerNodeSink]{source: source, toks: toks}
+	p := &parser[*Node, pointerNodeSink]{source: source, toks: newParserTokens(toks)}
 	p.sink.storage = storage
 	p.sink.source = source
 	return p
@@ -413,27 +489,27 @@ func (p *parser[N, S]) abortIfSharedAcrossBranch() {
 }
 
 func (p *parser[N, S]) cur() token.Token {
-	return p.toks[p.pos]
+	return p.toks.at(p.pos)
 }
 
 func (p *parser[N, S]) peek(offset int) token.Token {
 	idx := max(p.pos+offset, 0)
-	if idx >= len(p.toks) {
-		return p.toks[len(p.toks)-1]
+	if idx >= p.toks.len() {
+		return p.toks.at(p.toks.len() - 1)
 	}
-	return p.toks[idx]
+	return p.toks.at(idx)
 }
 
 func (p *parser[N, S]) curKind() token.Kind {
-	return p.toks[p.pos].Kind
+	return p.toks.kind(p.pos)
 }
 
 func (p *parser[N, S]) peekKind(offset int) token.Kind {
 	idx := max(p.pos+offset, 0)
-	if idx >= len(p.toks) {
-		return p.toks[len(p.toks)-1].Kind
+	if idx >= p.toks.len() {
+		return p.toks.kind(p.toks.len() - 1)
 	}
-	return p.toks[idx].Kind
+	return p.toks.kind(idx)
 }
 
 func (p *parser[N, S]) at(k token.Kind) bool {
@@ -446,7 +522,7 @@ func (p *parser[N, S]) atEnd() bool {
 
 func (p *parser[N, S]) advance() token.Token {
 	t := p.cur()
-	if p.pos < len(p.toks)-1 {
+	if p.pos < p.toks.len()-1 {
 		p.pos++
 	}
 	return t
@@ -538,13 +614,13 @@ func (p *parser[N, S]) buildDiagnosticCoverage() {
 }
 
 func (p *parser[N, S]) tokenAtOffset(offset int) token.Token {
-	idx := sort.Search(len(p.toks), func(i int) bool {
-		return p.toks[i].End.Offset >= offset
+	idx := sort.Search(p.toks.len(), func(i int) bool {
+		return p.toks.endOffset(i) >= offset
 	})
-	if idx < len(p.toks) {
-		return p.toks[idx]
+	if idx < p.toks.len() {
+		return p.toks.at(idx)
 	}
-	return p.toks[len(p.toks)-1]
+	return p.toks.at(p.toks.len() - 1)
 }
 
 func (p *parser[N, S]) emitMissingToken(expected token.Kind, context string) {
@@ -653,7 +729,7 @@ func (p *parser[N, S]) recoverStuckItem(grammar itemGrammar[N, S]) N {
 		})
 		return p.sink.Nil()
 	}
-	return p.makeRecoveryNode(start, p.toks[len(p.toks)-1].End.Offset, found, grammar, false)
+	return p.makeRecoveryNode(start, p.toks.endOffset(p.toks.len()-1), found, grammar, false)
 }
 
 func (p *parser[N, S]) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
@@ -685,5 +761,5 @@ func (p *parser[N, S]) stuckBoundary(start, startIdx int, found token.Token, gra
 		exactRemove := found.Kind == token.RBrace || found.Kind == token.RParen || found.Kind == token.RBracket
 		return p.makeRecoveryNode(start, last.End.Offset, found, grammar, exactRemove)
 	}
-	return p.makeRecoveryNode(start, p.toks[p.pos-1].End.Offset, found, grammar, false)
+	return p.makeRecoveryNode(start, p.toks.endOffset(p.pos-1), found, grammar, false)
 }

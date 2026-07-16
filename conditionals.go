@@ -36,8 +36,8 @@ func (p *parser[N, S]) isConditionalSplice() bool {
 
 func (p *parser[N, S]) hasClosingConditionalSplice(pos int) bool {
 	depth := 0
-	for pos < len(p.toks) && p.toks[pos].Kind != token.EOF {
-		switch p.toks[pos].Kind {
+	for pos < p.toks.len() && p.toks.kind(pos) != token.EOF {
+		switch p.toks.kind(pos) {
 		case token.LBrace:
 			depth++
 		case token.RBrace:
@@ -69,8 +69,8 @@ func (p *parser[N, S]) hasClosingConditionalSplice(pos int) bool {
 
 func (p *parser[N, S]) conditionalRegionExtent(start int) (end, braceDelta int, ok bool) {
 	depth := 0
-	for pos := start; pos < len(p.toks); pos++ {
-		tok := p.toks[pos]
+	for pos := start; pos < p.toks.len(); pos++ {
+		tok := p.toks.at(pos)
 		if tok.Kind == token.Hash {
 			switch classifyDirectiveName(p.peekAt(pos + 1).Text(p.source)) {
 			case dirIf:
@@ -98,9 +98,9 @@ func (p *parser[N, S]) conditionalRegionExtent(start int) (end, braceDelta int, 
 }
 
 func (p *parser[N, S]) afterLogicalLine(pos int) int {
-	for pos < len(p.toks) {
+	for pos < p.toks.len() {
 		pos++
-		if pos == len(p.toks) || lastTokenEndsLine(p.toks[pos-1]) {
+		if pos == p.toks.len() || lastTokenEndsLine(p.toks.at(pos-1)) {
 			break
 		}
 	}
@@ -108,10 +108,10 @@ func (p *parser[N, S]) afterLogicalLine(pos int) int {
 }
 
 func (p *parser[N, S]) peekAt(pos int) token.Token {
-	if pos >= len(p.toks) {
-		return p.toks[len(p.toks)-1]
+	if pos >= p.toks.len() {
+		return p.toks.at(p.toks.len() - 1)
 	}
-	return p.toks[pos]
+	return p.toks.at(pos)
 }
 
 func (p *parser[N, S]) consumeConditionalSplice() N {

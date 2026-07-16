@@ -20,8 +20,8 @@ func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 		}
 	}
 
-	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
-		node := p.sink.Store(Node{Kind: KindDirectiveDefine, Start: startOffset, End: p.sink.End(nameNode), Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia})
+	if p.atEnd() || lastTokenEndsLine(p.toks.at(p.pos-1)) {
+		node := p.sink.Store(Node{Kind: KindDirectiveDefine, Start: startOffset, End: p.sink.End(nameNode), Leading: leading, Trailing: p.toks.at(p.pos - 1).TrailingTrivia})
 		p.sink.SetField(node, fieldName, nameNode)
 		p.sink.AddChild(node, nameNode)
 		if params != p.sink.Nil() {
@@ -118,7 +118,7 @@ func (p *parser[N, S]) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyE
 	}
 
 	bodyToks := make([]token.Token, bodyEndIdx-bodyStartIdx, bodyEndIdx-bodyStartIdx+1)
-	copy(bodyToks, p.toks[bodyStartIdx:bodyEndIdx])
+	p.toks.copyTo(bodyToks, bodyStartIdx, bodyEndIdx)
 	last := bodyToks[len(bodyToks)-1]
 	bodyToks = append(bodyToks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
 
@@ -148,7 +148,7 @@ func (p *parser[N, S]) childrenHaveMissingSemicolon(node N) bool {
 func (p *parser[N, S]) tryParseAll(toks []token.Token, lenientTrailingSemi bool, fn func(*parser[N, S]) N) (N, bool) {
 	mark := p.sink.Mark()
 	sub := parser[N, S]{
-		source: p.source, toks: toks,
+		source: p.source, toks: newParserTokens(toks),
 		sink: p.sink, allowMissingTrailingSemi: lenientTrailingSemi,
 	}
 	node := fn(&sub)

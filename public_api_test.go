@@ -23,4 +23,10 @@ func TestPublicParserAPI(t *testing.T) {
 	if got := file.Root.Text(source); got != string(source) {
 		t.Fatalf("root source text mismatch: %q", got)
 	}
+	if got := file.Root.Bytes(source); string(got) != string(source) {
+		t.Fatalf("root source bytes mismatch: %q", got)
+	}
+	if got := file.Root.Range(); got != (parser.ByteRange{Start: 0, End: len(source)}) {
+		t.Fatalf("root range mismatch: %+v", got)
+	}
 }

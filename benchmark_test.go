@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pawnkit/pawn-parser/lexer"
@@ -16,6 +17,27 @@ func benchmarkSource(b *testing.B) []byte {
 		b.Fatal(err)
 	}
 	return source
+}
+
+func BenchmarkParseGenericArguments(b *testing.B) {
+	var source strings.Builder
+	source.WriteString("main() { Call(")
+	for i := range 2000 {
+		if i != 0 {
+			source.WriteByte(',')
+		}
+		source.WriteString("Type<Value>")
+	}
+	source.WriteString("); }")
+	data := []byte(source.String())
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for range b.N {
+		if file := ParseForLinter(data); file.HasParseErrors() {
+			b.Fatal("generic argument source did not parse")
+		}
+	}
 }
 
 func BenchmarkParseLargeFile(b *testing.B) {
@@ -78,6 +100,40 @@ func BenchmarkParseCompactRetainedLargeFile(b *testing.B) {
 		file := ParseCompact(source, ParseOptions{})
 		if len(file.Tree.Nodes) == 0 || len(file.Tokens) == 0 {
 			b.Fatal("ParseCompact returned incomplete syntax")
+		}
+	}
+}
+
+func BenchmarkTokensOnlyLargeFile(b *testing.B) {
+	source := benchmarkSource(b)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	b.ResetTimer()
+	for range b.N {
+		file := ParseWithProfile(source, ProfileTokensOnly)
+		if len(file.Tokens) == 0 || len(file.Tree.Nodes) != 0 {
+			b.Fatal("tokens-only profile returned invalid output")
+		}
+	}
+}
+
+func BenchmarkTypedSyntaxTraversal(b *testing.B) {
+	file := ParseWithProfile(benchmarkSource(b), ProfileAnalysis)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		count := 0
+		declarations := file.Syntax().Declarations()
+		for declarations.Next() {
+			if function, ok := AsFunction(declarations.Declaration()); ok {
+				parameters := function.Parameters()
+				for parameters.Next() {
+					count++
+				}
+			}
+		}
+		if count == 0 {
+			b.Fatal("typed traversal found no parameters")
 		}
 	}
 }

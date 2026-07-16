@@ -37,7 +37,7 @@ func (p *parser[N, S]) parseStateSelector() N {
 func (p *parser[N, S]) rawStateSelector() N {
 	stateStart := p.pos
 	p.skipAngleStateSelector()
-	n := p.directiveSpan(KindStateSelector, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset, nil, nil)
+	n := p.directiveSpan(KindStateSelector, p.toks.at(stateStart).Start.Offset, p.toks.endOffset(p.pos-1), nil, nil)
 	return n
 }
 

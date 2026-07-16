@@ -50,7 +50,7 @@ func (p *parser[N, S]) trySubParseExpression(startIdx, endIdx int) (N, bool) {
 		return p.sink.Nil(), false
 	}
 	toks := make([]token.Token, endIdx-startIdx, endIdx-startIdx+1)
-	copy(toks, p.toks[startIdx:endIdx])
+	p.toks.copyTo(toks, startIdx, endIdx)
 	last := toks[len(toks)-1]
 	toks = append(toks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
 	return p.tryParseAll(toks, false, (*parser[N, S]).parseExpression)
@@ -60,8 +60,9 @@ func (p *parser[N, S]) parseIncludeDirective(startOffset int, kind Kind) N {
 	leading := p.cur().LeadingTrivia
 	p.advance()
 	p.advance()
-	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
-		return p.directiveSpan(kind, startOffset, p.toks[p.pos-1].End.Offset, leading, p.toks[p.pos-1].TrailingTrivia)
+	if p.atEnd() || lastTokenEndsLine(p.toks.at(p.pos-1)) {
+		last := p.toks.at(p.pos - 1)
+		return p.directiveSpan(kind, startOffset, last.End.Offset, leading, last.TrailingTrivia)
 	}
 
 	pathStart := p.cur().Start.Offset

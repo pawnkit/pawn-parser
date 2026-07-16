@@ -1,11 +1,51 @@
 package lexer
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/pawnkit/pawn-parser/token"
 )
+
+func TestCompactSyntaxMatchesTokens(t *testing.T) {
+	t.Parallel()
+	source := []byte("// lead\nnew value = Call(1); // tail\n")
+	want := Tokenize(source)
+	compact, lines := TokenizeSyntax(source)
+	if got := lines.Position(12); got.Line != 2 || got.Col != 5 {
+		t.Fatalf("position = %+v, want line 2 column 5", got)
+	}
+	if len(compact) != len(want) {
+		t.Fatalf("compact token count = %d, want %d", len(compact), len(want))
+	}
+	for i, item := range compact {
+		if item.Kind != want[i].Kind || int(item.Start) != want[i].Start.Offset ||
+			int(item.End) != want[i].End.Offset {
+			t.Fatalf("compact token %d = %+v, want %+v", i, item, want[i])
+		}
+		if (item.LeadingFlags&token.TriviaPresent != 0) != (len(want[i].LeadingTrivia) != 0) {
+			t.Fatalf("compact token %d leading trivia summary differs", i)
+		}
+		endsLine := false
+		for _, trivia := range want[i].TrailingTrivia {
+			endsLine = endsLine || trivia.Kind == token.Newline
+		}
+		if (item.TrailingFlags&token.TriviaEndsLine != 0) != endsLine {
+			t.Fatalf("compact token %d trailing line summary differs", i)
+		}
+	}
+}
+
+func TestCompactOnlyMatchesCompactTokens(t *testing.T) {
+	t.Parallel()
+	source := []byte("new value; // comment\n")
+	_, wantTokens, wantTrivia := TokenizeCompact(source, true)
+	gotTokens, gotTrivia := TokenizeCompactOnly(source, true)
+	if !reflect.DeepEqual(gotTokens, wantTokens) || !reflect.DeepEqual(gotTrivia, wantTrivia) {
+		t.Fatal("compact-only tokenization differs from compact tokenization")
+	}
+}
 
 func kinds(toks []token.Token) []token.Kind {
 	out := make([]token.Kind, 0, len(toks))

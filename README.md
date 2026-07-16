@@ -40,3 +40,33 @@ func main() {
 - `github.com/pawnkit/pawn-parser` — Pawn CST parser and node kinds.
 - `github.com/pawnkit/pawn-parser/lexer` — standalone tokenizer.
 - `github.com/pawnkit/pawn-parser/token` — token kinds, positions, and trivia.
+
+## Parse profiles
+
+Use `ParseWithProfile` for new compact consumers:
+
+- `ProfileLossless` retains syntax, tokens, trivia, and origins for formatting.
+- `ProfileAnalysis` retains compact syntax and diagnostics for linting.
+- `ProfileTokensOnly` tokenizes without building a syntax tree.
+
+`Parse` remains the pointer-tree compatibility API. `ParseForLinter` remains an
+alias for the analysis profile.
+
+Analysis consumers can use typed, allocation-free traversal:
+
+```go
+file := parser.ParseWithProfile(source, parser.ProfileAnalysis)
+declarations := file.Syntax().Declarations()
+for declarations.Next() {
+	function, ok := parser.AsFunction(declarations.Declaration())
+	if !ok {
+		continue
+	}
+	name, _ := function.Name()
+	fmt.Println(name.Text())
+}
+```
+
+Formatters should use `ProfileLossless`. Syntax token handles then expose
+retained leading trivia, trailing trivia, and origin chains without expanding
+the pointer CST.

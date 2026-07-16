@@ -187,8 +187,8 @@ func (p *parser[N, S]) parseArgumentList() N {
 
 func (p *parser[N, S]) argumentEnd(start int) int {
 	parenDepth, bracketDepth, braceDepth, angleDepth := 0, 0, 0, 0
-	for i := start; i < len(p.toks); i++ {
-		kind := p.toks[i].Kind
+	for i := start; i < p.toks.len(); i++ {
+		kind := p.toks.kind(i)
 		if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
 			(kind == token.Comma || kind == token.RParen || kind == token.EOF) {
 			return i
@@ -217,26 +217,35 @@ func (p *parser[N, S]) argumentEnd(start int) int {
 		default:
 		}
 	}
-	return len(p.toks) - 1
+	return p.toks.len() - 1
 }
 
 func (p *parser[N, S]) hasAngleClose(start int) bool {
-	depth := 1
-	for i := start + 1; i < len(p.toks); i++ {
-		switch p.toks[i].Kind {
+	if !p.angleCloseBuilt {
+		p.buildAngleClose()
+	}
+	return start >= 0 && start < len(p.angleClose) && p.angleClose[start]
+}
+
+func (p *parser[N, S]) buildAngleClose() {
+	p.angleClose = make([]bool, p.toks.len())
+	stack := make([]int, 0, 8)
+	for i := range p.toks.len() {
+		switch p.toks.kind(i) {
 		case token.Lt:
-			depth++
+			stack = append(stack, i)
 		case token.Gt:
-			depth--
-			if depth == 0 {
-				return true
+			if len(stack) != 0 {
+				last := len(stack) - 1
+				p.angleClose[stack[last]] = true
+				stack = stack[:last]
 			}
 		case token.RParen, token.Semicolon, token.EOF:
-			return false
+			stack = stack[:0]
 		default:
 		}
 	}
-	return false
+	p.angleCloseBuilt = true
 }
 
 func (p *parser[N, S]) consumeStructuredMacroArgument(endPos int) N {

@@ -33,17 +33,86 @@ func Tokenize(src []byte) []token.Token {
 func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
 	tokens, trivia := buildTokens(src)
 	fullTrivia := trivia.finish()
-	return tokens.finishCompact(fullTrivia, retainTrivia)
+	return tokens.finishCompact(fullTrivia, retainTrivia, true)
+}
+
+// TokenizeCompactOnly tokenizes src without building full token records.
+func TokenizeCompactOnly(src []byte, retainTrivia bool) ([]token.CompactToken, []token.CompactTrivia) {
+	tokens, trivia := buildTokens(src)
+	fullTrivia := trivia.finish()
+	_, compact, compactTrivia := tokens.finishCompact(fullTrivia, retainTrivia, false)
+	return compact, compactTrivia
+}
+
+// TokenizeSyntax tokenizes src for grammar parsing.
+func TokenizeSyntax(src []byte) ([]token.SyntaxToken, token.LineMap) {
+	tokens := buildSyntaxTokens(src)
+	return tokens.finishSyntax(), token.NewLineMap(src)
+}
+
+func buildSyntaxTokens(src []byte) tokenBuilder {
+	s := newScanner(src)
+	var tokens tokenBuilder
+	var pending rawToken
+	hasPending := false
+	var leadingFlags token.TriviaFlags
+	for {
+		r := pending
+		if hasPending {
+			hasPending = false
+		} else {
+			r = s.nextRaw()
+		}
+		if r.kind.IsTrivia() {
+			leadingFlags |= triviaFlags(r.kind)
+			continue
+		}
+		built := builtToken{kind: r.kind, start: r.start, end: r.end, leadingFlags: leadingFlags}
+		leadingFlags = 0
+		if r.kind != token.EOF {
+			for {
+				r2 := s.nextRaw()
+				if !r2.kind.IsTrivia() {
+					pending = r2
+					hasPending = true
+					break
+				}
+				built.trailingFlags |= triviaFlags(r2.kind)
+				if r2.kind == token.Newline {
+					break
+				}
+			}
+		}
+		tokens.append(built)
+		if r.kind == token.EOF {
+			return tokens
+		}
+	}
+}
+
+func triviaFlags(kind token.Kind) token.TriviaFlags {
+	flags := token.TriviaPresent
+	if kind == token.Newline {
+		flags |= token.TriviaEndsLine
+	}
+	return flags
 }
 
 func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 	s := newScanner(src)
 	var tokens tokenBuilder
 	var trivia triviaBuilder
+	var pending rawToken
+	hasPending := false
 	leadingStart := 0
 
 	for {
-		r := s.nextRaw()
+		r := pending
+		if hasPending {
+			hasPending = false
+		} else {
+			r = s.nextRaw()
+		}
 		if r.kind.IsTrivia() {
 			trivia.append(token.Trivia{Kind: r.kind, Start: r.start, End: r.end})
 			continue
@@ -61,10 +130,10 @@ func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 		}
 
 		for {
-			save := *s
 			r2 := s.nextRaw()
 			if !r2.kind.IsTrivia() {
-				*s = save
+				pending = r2
+				hasPending = true
 				break
 			}
 			trivia.append(token.Trivia{Kind: r2.kind, Start: r2.start, End: r2.end})
@@ -93,6 +162,9 @@ type builtToken struct {
 	start  token.Position
 	end    token.Position
 	trivia triviaRange
+
+	leadingFlags  token.TriviaFlags
+	trailingFlags token.TriviaFlags
 }
 
 type tokenBuilder struct {
@@ -227,8 +299,11 @@ func (b *tokenBuilder) finish(trivia []token.Trivia) []token.Token {
 	return tokens
 }
 
-func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
-	tokens := make([]token.Token, b.count)
+func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia, buildFull bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
+	var tokens []token.Token
+	if buildFull {
+		tokens = make([]token.Token, b.count)
+	}
 	compact := make([]token.CompactToken, b.count)
 	var compactTrivia []token.CompactTrivia
 	if retainTrivia {
@@ -247,10 +322,12 @@ func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) (
 		}
 		for _, built := range data {
 			r := built.trivia
-			tokens[output] = token.Token{
-				Kind: built.kind, Start: built.start, End: built.end,
-				LeadingTrivia:  triviaSlice(trivia, r.leadingStart, r.trailingStart),
-				TrailingTrivia: triviaSlice(trivia, r.trailingStart, r.trailingEnd),
+			if buildFull {
+				tokens[output] = token.Token{
+					Kind: built.kind, Start: built.start, End: built.end,
+					LeadingTrivia:  triviaSlice(trivia, r.leadingStart, r.trailingStart),
+					TrailingTrivia: triviaSlice(trivia, r.trailingStart, r.trailingEnd),
+				}
 			}
 			compact[output] = token.CompactToken{
 				Kind: built.kind, Start: compactPosition(built.start), End: compactPosition(built.end),
@@ -270,6 +347,26 @@ func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) (
 		releaseBuiltTokenBlock(block)
 	}
 	return tokens, compact, compactTrivia
+}
+
+func (b *tokenBuilder) finishSyntax() []token.SyntaxToken {
+	tokens := make([]token.SyntaxToken, b.count)
+	output := 0
+	for blockIndex, block := range b.blocks {
+		data := block.data
+		if blockIndex == len(b.blocks)-1 {
+			data = data[:b.next]
+		}
+		for _, built := range data {
+			tokens[output] = token.SyntaxToken{
+				Kind: built.kind, Start: compactUint(built.start.Offset), End: compactUint(built.end.Offset),
+				LeadingFlags: built.leadingFlags, TrailingFlags: built.trailingFlags,
+			}
+			output++
+		}
+		releaseBuiltTokenBlock(block)
+	}
+	return tokens
 }
 
 func compactPosition(position token.Position) token.CompactPosition {

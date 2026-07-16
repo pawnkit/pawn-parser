@@ -3,11 +3,21 @@ package parser
 import "github.com/pawnkit/pawn-parser/token"
 
 type compactBuildNode struct {
+	error    uint32
+	trivia   uint32
+	children uint32
+	fields   uint32
+}
+
+type compactBuildChildren struct {
+	inline [2]uint32
+	count  uint32
+	spill  uint32
+}
+
+type compactBuildTrivia struct {
 	leading  []token.Trivia
 	trailing []token.Trivia
-	children []uint32
-	fields   []compactBuildField
-	error    uint32
 }
 
 type compactBuildError struct {
@@ -22,15 +32,27 @@ type compactBuildField struct {
 	node uint32
 }
 
+type compactBuildFields struct {
+	inline [2]compactBuildField
+	count  uint32
+	spill  uint32
+}
+
 type compactBuilder struct {
-	nodes      []compactBuildNode
-	records    []CompactNode
-	edgeCount  int
-	fieldCount int
-	children   compactUintArena
-	fields     compactFieldArena
-	trivia     parserTriviaArena
-	errors     []compactBuildError
+	nodes        []compactBuildNode
+	records      []CompactNode
+	edgeCount    int
+	fieldCount   int
+	children     compactUintArena
+	fields       compactFieldArena
+	trivia       parserTriviaArena
+	errors       []compactBuildError
+	nodeTrivia   []compactBuildTrivia
+	nodeChildren []compactBuildChildren
+	childSpills  [][]uint32
+	nodeFields   []compactBuildFields
+	fieldSpills  [][]compactBuildField
+	retainTrivia bool
 }
 
 type compactArenaMark struct {
@@ -121,11 +143,20 @@ type compactNodeSink struct{ builder *compactBuilder }
 
 var _ nodeSink[uint32] = compactNodeSink{}
 
-func newCompactNodeSink(tokenCount int) compactNodeSink {
+func newCompactNodeSink(tokenCount int, retainTrivia bool) compactNodeSink {
 	capacity := tokenCount*2/3 + 64
+	nodeTrivia := []compactBuildTrivia{{}}
+	if retainTrivia {
+		nodeTrivia = make([]compactBuildTrivia, 1, capacity)
+	}
 	return compactNodeSink{builder: &compactBuilder{
 		nodes: make([]compactBuildNode, 1, capacity), records: make([]CompactNode, 1, capacity),
-		errors: []compactBuildError{{}},
+		errors: []compactBuildError{{}}, retainTrivia: retainTrivia,
+		nodeTrivia:   nodeTrivia,
+		nodeChildren: make([]compactBuildChildren, 1, tokenCount/3+64),
+		childSpills:  [][]uint32{nil},
+		nodeFields:   make([]compactBuildFields, 1, tokenCount/3+64),
+		fieldSpills:  [][]compactBuildField{nil},
 	}}
 }
 
@@ -143,7 +174,12 @@ func (s compactNodeSink) Store(value Node) uint32 {
 		TokenKind: value.Tok.Kind, TokenStart: compactUint(value.Tok.Start.Offset), TokenEnd: compactUint(value.Tok.End.Offset),
 		HasError: value.HasError, MissingSemi: value.MissingSemi, HasRaw: value.Raw != nil,
 	})
-	*s.node(id) = compactBuildNode{leading: value.Leading, trailing: value.Trailing}
+	if s.builder.retainTrivia {
+		if len(value.Leading) != 0 || len(value.Trailing) != 0 {
+			trivia := s.ensureTrivia(id)
+			trivia.leading, trivia.trailing = value.Leading, value.Trailing
+		}
+	}
 	if value.ErrorMessage != "" || len(value.ErrorExpected) != 0 || value.ErrorOffset != 0 || value.ErrorFound != token.Invalid {
 		*s.ensureError(id) = compactBuildError{
 			message: value.ErrorMessage, expected: value.ErrorExpected,
@@ -165,8 +201,8 @@ func (s compactNodeSink) NewNode(kind Kind, children ...uint32) uint32 {
 	for _, child := range children {
 		s.AddChild(n, child)
 	}
-	if len(s.node(n).children) != 0 {
-		first := s.node(n).children[0]
+	if stored := s.Children(n); len(stored) != 0 {
+		first := stored[0]
 		s.SetStart(n, s.Start(first))
 		s.SetLeading(n, s.Leading(first))
 	}
@@ -200,6 +236,77 @@ func (s compactNodeSink) error(n uint32) *compactBuildError {
 	return &s.builder.errors[id]
 }
 
+func (s compactNodeSink) ensureTrivia(n uint32) *compactBuildTrivia {
+	node := s.node(n)
+	if node.trivia == 0 {
+		node.trivia = compactUint(len(s.builder.nodeTrivia))
+		s.builder.nodeTrivia = append(s.builder.nodeTrivia, compactBuildTrivia{})
+	}
+	return &s.builder.nodeTrivia[node.trivia]
+}
+
+func (s compactNodeSink) triviaData(n uint32) *compactBuildTrivia {
+	id := s.node(n).trivia
+	if id == 0 {
+		return nil
+	}
+	return &s.builder.nodeTrivia[id]
+}
+
+func (s compactNodeSink) ensureChildren(n uint32) *compactBuildChildren {
+	node := s.node(n)
+	if node.children == 0 {
+		node.children = compactUint(len(s.builder.nodeChildren))
+		s.builder.nodeChildren = append(s.builder.nodeChildren, compactBuildChildren{})
+	}
+	return &s.builder.nodeChildren[node.children]
+}
+
+func (s compactNodeSink) childData(n uint32) *compactBuildChildren {
+	id := s.node(n).children
+	if id == 0 {
+		return nil
+	}
+	return &s.builder.nodeChildren[id]
+}
+
+func (s compactNodeSink) childItems(c *compactBuildChildren) []uint32 {
+	if c == nil || c.count == 0 {
+		return nil
+	}
+	if c.count <= uint32(len(c.inline)) { // #nosec G115 -- Count is bounded by the array.
+		return c.inline[:c.count:c.count]
+	}
+	return s.builder.childSpills[c.spill]
+}
+
+func (s compactNodeSink) ensureFields(n uint32) *compactBuildFields {
+	node := s.node(n)
+	if node.fields == 0 {
+		node.fields = compactUint(len(s.builder.nodeFields))
+		s.builder.nodeFields = append(s.builder.nodeFields, compactBuildFields{})
+	}
+	return &s.builder.nodeFields[node.fields]
+}
+
+func (s compactNodeSink) fieldData(n uint32) *compactBuildFields {
+	id := s.node(n).fields
+	if id == 0 {
+		return nil
+	}
+	return &s.builder.nodeFields[id]
+}
+
+func (s compactNodeSink) fieldItems(data *compactBuildFields) []compactBuildField {
+	if data == nil || data.count == 0 {
+		return nil
+	}
+	if data.count <= uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+		return data.inline[:data.count:data.count]
+	}
+	return s.builder.fieldSpills[data.spill]
+}
+
 func (s compactNodeSink) Kind(n uint32) Kind           { return s.record(n).Kind }
 func (s compactNodeSink) SetKind(n uint32, value Kind) { s.record(n).Kind = value }
 func (s compactNodeSink) Token(n uint32) token.Token {
@@ -211,15 +318,34 @@ func (s compactNodeSink) SetToken(n uint32, value token.Token) {
 	v := s.record(n)
 	v.TokenKind, v.TokenStart, v.TokenEnd = value.Kind, compactUint(value.Start.Offset), compactUint(value.End.Offset)
 }
-func (s compactNodeSink) Start(n uint32) int                        { return int(s.record(n).Start) }
-func (s compactNodeSink) SetStart(n uint32, value int)              { s.record(n).Start = compactUint(value) }
-func (s compactNodeSink) End(n uint32) int                          { return int(s.record(n).End) }
-func (s compactNodeSink) SetEnd(n uint32, value int)                { s.record(n).End = compactUint(value) }
-func (s compactNodeSink) Leading(n uint32) []token.Trivia           { return s.node(n).leading }
-func (s compactNodeSink) SetLeading(n uint32, value []token.Trivia) { s.node(n).leading = value }
-func (s compactNodeSink) Trailing(n uint32) []token.Trivia          { return s.node(n).trailing }
+func (s compactNodeSink) Start(n uint32) int           { return int(s.record(n).Start) }
+func (s compactNodeSink) SetStart(n uint32, value int) { s.record(n).Start = compactUint(value) }
+func (s compactNodeSink) End(n uint32) int             { return int(s.record(n).End) }
+func (s compactNodeSink) SetEnd(n uint32, value int)   { s.record(n).End = compactUint(value) }
+func (s compactNodeSink) Leading(n uint32) []token.Trivia {
+	if value := s.triviaData(n); value != nil {
+		return value.leading
+	}
+	return nil
+}
+
+func (s compactNodeSink) SetLeading(n uint32, value []token.Trivia) {
+	if s.builder.retainTrivia {
+		s.ensureTrivia(n).leading = value
+	}
+}
+
+func (s compactNodeSink) Trailing(n uint32) []token.Trivia {
+	if value := s.triviaData(n); value != nil {
+		return value.trailing
+	}
+	return nil
+}
+
 func (s compactNodeSink) SetTrailing(n uint32, value []token.Trivia) {
-	s.node(n).trailing = value
+	if s.builder.retainTrivia {
+		s.ensureTrivia(n).trailing = value
+	}
 }
 func (s compactNodeSink) HasError(n uint32) bool              { return s.record(n).HasError }
 func (s compactNodeSink) SetHasError(n uint32, value bool)    { s.record(n).HasError = value }
@@ -275,22 +401,26 @@ func (s compactNodeSink) SetErrorExpected(n uint32, value []token.Kind) {
 }
 
 func (s compactNodeSink) Children(n uint32) []uint32 {
-	return s.node(n).children
+	return s.childItems(s.childData(n))
 }
 
 func (s compactNodeSink) SetChildren(n uint32, children []uint32) {
-	node := s.node(n)
-	s.builder.edgeCount += len(children) - len(node.children)
-	if cap(node.children) < len(children) {
-		node.children = s.builder.children.alloc(len(children))[:0]
+	data := s.ensureChildren(n)
+	s.builder.edgeCount += len(children) - int(data.count)
+	data.count = compactUint(len(children))
+	if len(children) <= len(data.inline) {
+		copy(data.inline[:], children)
+		data.spill = 0
 	} else {
-		node.children = node.children[:0]
+		spill := s.builder.children.alloc(len(children))
+		copy(spill, children)
+		data.spill = compactUint(len(s.builder.childSpills))
+		s.builder.childSpills = append(s.builder.childSpills, spill)
 	}
-	node.children = append(node.children, children...)
 	if len(children) != 0 {
 		last := children[len(children)-1]
 		s.SetEnd(n, s.End(last))
-		node.trailing = s.Trailing(last)
+		s.SetTrailing(n, s.Trailing(last))
 	}
 }
 
@@ -298,18 +428,30 @@ func (s compactNodeSink) AddChild(n, child uint32) {
 	if child == 0 {
 		return
 	}
-	node := s.node(n)
-	node.children = s.builder.children.append(node.children, child)
+	data := s.ensureChildren(n)
+	if data.count < uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+		data.inline[data.count] = child
+	} else {
+		if data.count == uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+			spill := s.builder.children.alloc(4)[:2]
+			copy(spill, data.inline[:])
+			data.spill = compactUint(len(s.builder.childSpills))
+			s.builder.childSpills = append(s.builder.childSpills, spill)
+		}
+		spill := s.builder.childSpills[data.spill]
+		s.builder.childSpills[data.spill] = s.builder.children.append(spill, child)
+	}
+	data.count++
 	s.builder.edgeCount++
 	s.SetEnd(n, s.End(child))
-	node.trailing = s.Trailing(child)
+	s.SetTrailing(n, s.Trailing(child))
 	if s.HasError(child) {
 		s.SetHasError(n, true)
 	}
 }
 
 func (s compactNodeSink) Field(n uint32, id FieldID) uint32 {
-	for _, entry := range s.node(n).fields {
+	for _, entry := range s.fieldItems(s.fieldData(n)) {
 		if entry.id == id {
 			return entry.node
 		}
@@ -321,16 +463,34 @@ func (s compactNodeSink) SetField(n uint32, id FieldID, child uint32) {
 	if child == 0 {
 		return
 	}
-	node := s.node(n)
-	node.fields = s.builder.fields.append(node.fields, compactBuildField{id: id, node: child})
+	data := s.ensureFields(n)
+	entry := compactBuildField{id: id, node: child}
+	if data.count < uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+		data.inline[data.count] = entry
+	} else {
+		if data.count == uint32(len(data.inline)) { // #nosec G115 -- Count is bounded by the array.
+			spill := s.builder.fields.append(nil, data.inline[0])
+			spill = s.builder.fields.append(spill, data.inline[1])
+			data.spill = compactUint(len(s.builder.fieldSpills))
+			s.builder.fieldSpills = append(s.builder.fieldSpills, spill)
+		}
+		spill := s.builder.fieldSpills[data.spill]
+		s.builder.fieldSpills[data.spill] = s.builder.fields.append(spill, entry)
+	}
+	data.count++
 	s.builder.fieldCount++
 }
 
 func (s compactNodeSink) Mark() sinkMark {
 	return sinkMark{
 		nodes: len(s.builder.nodes), edgeCount: s.builder.edgeCount, fieldCount: s.builder.fieldCount,
-		errors:   len(s.builder.errors),
-		children: s.builder.children.mark(), fields: s.builder.fields.mark(),
+		errors:       len(s.builder.errors),
+		nodeTrivia:   len(s.builder.nodeTrivia),
+		nodeChildren: len(s.builder.nodeChildren),
+		childSpills:  len(s.builder.childSpills),
+		nodeFields:   len(s.builder.nodeFields),
+		fieldSpills:  len(s.builder.fieldSpills),
+		children:     s.builder.children.mark(), fields: s.builder.fields.mark(),
 		trivia: s.builder.trivia.mark(),
 	}
 }
@@ -342,10 +502,17 @@ func (s compactNodeSink) Rewind(mark sinkMark) {
 	s.builder.edgeCount = mark.edgeCount
 	s.builder.fieldCount = mark.fieldCount
 	s.builder.errors = s.builder.errors[:mark.errors]
+	s.builder.nodeTrivia = s.builder.nodeTrivia[:mark.nodeTrivia]
+	s.builder.nodeChildren = s.builder.nodeChildren[:mark.nodeChildren]
+	s.builder.childSpills = s.builder.childSpills[:mark.childSpills]
+	s.builder.nodeFields = s.builder.nodeFields[:mark.nodeFields]
+	s.builder.fieldSpills = s.builder.fieldSpills[:mark.fieldSpills]
 	s.builder.children.rewind(mark.children)
 	s.builder.fields.rewind(mark.fields)
 	s.builder.trivia.rewind(mark.trivia)
 }
+
+func (s compactNodeSink) RetainsTrivia() bool { return s.builder.retainTrivia }
 
 func (s compactNodeSink) AllocTrivia(size int) []token.Trivia {
 	return s.builder.trivia.alloc(size)
@@ -368,12 +535,11 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 		if mapped == 0 {
 			continue
 		}
-		node := s.node(id)
 		index := mapped - 1
 		if index+1 != id {
 			tree.Nodes[index] = s.builder.records[id]
 		}
-		children := node.children
+		children := s.Children(id)
 		childStart := compactUint(childPos)
 		for _, child := range children {
 			tree.Children[childPos] = remap[child] - 1
@@ -381,7 +547,7 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 		}
 
 		fieldStart := compactUint(fieldPos)
-		for _, entry := range node.fields {
+		for _, entry := range s.fieldItems(s.fieldData(id)) {
 			if entry.node >= compactUint(len(remap)) || remap[entry.node] == 0 {
 				continue
 			}
@@ -416,7 +582,7 @@ func (s compactNodeSink) reachableNodes(root uint32) ([]uint32, int, int, int) {
 			continue
 		}
 		remap[id] = ^uint32(0)
-		stack = append(stack, s.node(id).children...)
+		stack = append(stack, s.Children(id)...)
 	}
 
 	nodeCount, childCount, fieldCount := 0, 0, 0
@@ -426,9 +592,8 @@ func (s compactNodeSink) reachableNodes(root uint32) ([]uint32, int, int, int) {
 		}
 		nodeCount++
 		remap[id] = compactUint(nodeCount)
-		node := s.node(id)
-		childCount += len(node.children)
-		for _, field := range node.fields {
+		childCount += len(s.Children(id))
+		for _, field := range s.fieldItems(s.fieldData(id)) {
 			if field.node < compactUint(len(remap)) && remap[field.node] != 0 {
 				fieldCount++
 			}
