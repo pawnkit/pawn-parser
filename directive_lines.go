@@ -2,7 +2,7 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseSingleDirective() *Node {
+func (p *parser[N, S]) parseSingleDirective() N {
 	startOffset := p.cur().Start.Offset
 	dk := p.peekDirectiveKeyword()
 	switch dk {
@@ -17,7 +17,7 @@ func (p *parser) parseSingleDirective() *Node {
 	}
 }
 
-func (p *parser) consumeRawDirectiveLine(startOffset int, kind Kind) *Node {
+func (p *parser[N, S]) consumeRawDirectiveLine(startOffset int, kind Kind) N {
 	leading := p.cur().LeadingTrivia
 	last := p.advance() // '#'
 	if !p.atEnd() {
@@ -38,25 +38,25 @@ func (p *parser) consumeRawDirectiveLine(startOffset int, kind Kind) *Node {
 
 	if kind == KindDirectiveIf || kind == KindDirectiveElseif || kind == KindDirectiveAssert {
 		if cond, ok := p.trySubParseExpression(payloadStartIdx, payloadEndIdx); ok {
-			p.setField(n, fieldCondition, cond)
-			n.Children = []*Node{cond}
+			p.sink.SetField(n, fieldCondition, cond)
+			p.sink.SetChildren(n, []N{cond})
 		}
 	}
 	return n
 }
 
-func (p *parser) trySubParseExpression(startIdx, endIdx int) (*Node, bool) {
+func (p *parser[N, S]) trySubParseExpression(startIdx, endIdx int) (N, bool) {
 	if startIdx >= endIdx {
-		return nil, false
+		return p.sink.Nil(), false
 	}
 	toks := make([]token.Token, endIdx-startIdx, endIdx-startIdx+1)
 	copy(toks, p.toks[startIdx:endIdx])
 	last := toks[len(toks)-1]
 	toks = append(toks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
-	return p.tryParseAll(toks, false, (*parser).parseExpression)
+	return p.tryParseAll(toks, false, (*parser[N, S]).parseExpression)
 }
 
-func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
+func (p *parser[N, S]) parseIncludeDirective(startOffset int, kind Kind) N {
 	leading := p.cur().LeadingTrivia
 	p.advance()
 	p.advance()
@@ -74,11 +74,11 @@ func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
 	}
 	pathEnd := last.End.Offset
 	pathNode := p.directiveSpan(KindDirectivePath, pathStart, pathEnd, nil, last.TrailingTrivia)
-	pathNode.Trailing = last.TrailingTrivia
+	p.sink.SetTrailing(pathNode, last.TrailingTrivia)
 
-	node := p.storeNode(Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia})
-	node.Children = []*Node{pathNode}
-	p.setField(node, fieldPath, pathNode)
+	node := p.sink.Store(Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia})
+	p.sink.SetChildren(node, []N{pathNode})
+	p.sink.SetField(node, fieldPath, pathNode)
 	return node
 }
 

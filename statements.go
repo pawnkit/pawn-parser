@@ -2,12 +2,12 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseStatement() *Node {
+func (p *parser[N, S]) parseStatement() N {
 	if !p.enterDepth() {
 		defer p.exitDepth()
 		p.broken = true
 		tok := p.cur()
-		return p.storeNode(Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, HasError: true})
+		return p.sink.Store(Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, HasError: true})
 	}
 	defer p.exitDepth()
 
@@ -42,10 +42,10 @@ func (p *parser) parseStatement() *Node {
 		return p.parseVariableDeclaration()
 	case token.Semicolon:
 		tok := p.advance()
-		return p.storeNode(Node{Kind: KindEmptyStatement, Tok: tok, Start: tok.Start.Offset, End: tok.End.Offset, Leading: tok.LeadingTrivia, Trailing: tok.TrailingTrivia})
+		return p.sink.Store(Node{Kind: KindEmptyStatement, Tok: tok, Start: tok.Start.Offset, End: tok.End.Offset, Leading: tok.LeadingTrivia, Trailing: tok.TrailingTrivia})
 	case token.Hash:
 		if dk := p.peekDirectiveKeyword(); dk == dirElseif || dk == dirElse || dk == dirEndif {
-			return p.storeNode(Node{Kind: KindEmptyStatement, Start: p.cur().Start.Offset, End: p.cur().Start.Offset})
+			return p.sink.Store(Node{Kind: KindEmptyStatement, Start: p.cur().Start.Offset, End: p.cur().Start.Offset})
 		}
 		return p.parseSingleDirective()
 	default:
@@ -72,11 +72,11 @@ func nativeParenthesizedStatement(kind token.Kind) bool {
 	}
 }
 
-func isLabelStart(p *parser) bool {
+func isLabelStart[N comparable, S nodeSink[N]](p *parser[N, S]) bool {
 	return p.curKind() == token.Identifier && p.peekKind(1) == token.Colon && p.peekKind(2) != token.Colon
 }
 
-func (p *parser) macroFunctionDefinitionStart() bool {
+func (p *parser[N, S]) macroFunctionDefinitionStart() bool {
 	if !p.macroFunctionQualifierStart() {
 		return false
 	}
@@ -99,7 +99,7 @@ func (p *parser) macroFunctionDefinitionStart() bool {
 	}
 }
 
-func isMacroInvocationBlockStart(p *parser) bool {
+func isMacroInvocationBlockStart[N comparable, S nodeSink[N]](p *parser[N, S]) bool {
 	if p.curKind() != token.Identifier || p.peekKind(1) != token.LParen {
 		return false
 	}
@@ -134,183 +134,183 @@ func canStartMacroControlledStatement(kind token.Kind) bool {
 	}
 }
 
-func (p *parser) parseMacroInvocationBlock() *Node {
+func (p *parser[N, S]) parseMacroInvocationBlock() N {
 	nameTok := p.advance()
-	name := p.newLeaf(KindIdentifier, nameTok)
+	name := p.sink.NewLeaf(KindIdentifier, nameTok)
 	args := p.parseArgumentList()
 	body := p.parseControlledStatement()
-	node := p.newNode(KindMacroInvocationBlock, name, args, body)
-	p.setField(node, fieldFunction, name)
-	p.setField(node, fieldArguments, args)
-	p.setField(node, fieldBody, body)
+	node := p.sink.NewNode(KindMacroInvocationBlock, name, args, body)
+	p.sink.SetField(node, fieldFunction, name)
+	p.sink.SetField(node, fieldArguments, args)
+	p.sink.SetField(node, fieldBody, body)
 	return node
 }
 
-func (p *parser) parseBlock() *Node {
+func (p *parser[N, S]) parseBlock() N {
 	lb := p.advance() // '{'
-	node := p.storeNode(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
-	items := p.parseItemSequence(itemGrammar{
-		parseItem:        func(p *parser) *Node { return p.parseStatement() },
+	node := p.sink.Store(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
+	items := p.parseItemSequence(itemGrammar[N, S]{
+		parseItem:        func(p *parser[N, S]) N { return p.parseStatement() },
 		recoveryContext:  "statement",
 		recoveryExpected: []token.Kind{token.Semicolon, token.RBrace},
-		stop: func(p *parser) bool {
+		stop: func(p *parser[N, S]) bool {
 			p.abortIfSharedAcrossBranch()
 			return p.at(token.RBrace)
 		},
 	})
 	for _, it := range items {
-		p.addChild(node, it)
+		p.sink.AddChild(node, it)
 	}
 	if p.at(token.RBrace) {
 		rb := p.advance()
-		node.End = rb.End.Offset
-		node.Trailing = rb.TrailingTrivia
+		p.sink.SetEnd(node, rb.End.Offset)
+		p.sink.SetTrailing(node, rb.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RBrace, "block")
-		node.End = p.cur().Start.Offset
+		p.sink.SetEnd(node, p.cur().Start.Offset)
 	}
 	return node
 }
 
-func (p *parser) parseControlledStatement() *Node {
+func (p *parser[N, S]) parseControlledStatement() N {
 	return p.parseStatement()
 }
 
-func (p *parser) consumeTrailingSemi(node *Node) {
+func (p *parser[N, S]) consumeTrailingSemi(node N) {
 	switch {
 	case p.at(token.Semicolon):
 		semi := p.advance()
-		node.End = semi.End.Offset
-		node.Trailing = semi.TrailingTrivia
+		p.sink.SetEnd(node, semi.End.Offset)
+		p.sink.SetTrailing(node, semi.TrailingTrivia)
 	case p.missingSemiOK():
-		node.MissingSemi = true
+		p.sink.SetMissingSemi(node, true)
 	default:
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 }
 
-func (p *parser) parseIfStatement() *Node {
+func (p *parser[N, S]) parseIfStatement() N {
 	kw := p.advance()
 	condition := p.parseParenCondition()
 	consequence := p.parseControlledStatement()
-	node := p.newNode(KindIfStatement, condition, consequence)
-	p.setField(node, fieldCondition, condition)
-	p.setField(node, fieldConsequence, consequence)
-	node.Tok = kw
-	node.Start = kw.Start.Offset
-	node.Leading = kw.LeadingTrivia
+	node := p.sink.NewNode(KindIfStatement, condition, consequence)
+	p.sink.SetField(node, fieldCondition, condition)
+	p.sink.SetField(node, fieldConsequence, consequence)
+	p.sink.SetToken(node, kw)
+	p.sink.SetStart(node, kw.Start.Offset)
+	p.sink.SetLeading(node, kw.LeadingTrivia)
 	if p.at(token.KwElse) {
 		p.advance()
 		alternative := p.parseControlledStatement()
-		p.setField(node, fieldAlternative, alternative)
-		p.addChild(node, alternative)
-		node.End = alternative.End
-		node.Trailing = alternative.Trailing
-		if alternative.HasError {
-			node.HasError = true
+		p.sink.SetField(node, fieldAlternative, alternative)
+		p.sink.AddChild(node, alternative)
+		p.sink.SetEnd(node, p.sink.End(alternative))
+		p.sink.SetTrailing(node, p.sink.Trailing(alternative))
+		if p.sink.HasError(alternative) {
+			p.sink.SetHasError(node, true)
 		}
 	}
 	return node
 }
 
-func (p *parser) parseParenCondition() *Node {
+func (p *parser[N, S]) parseParenCondition() N {
 	if !p.at(token.LParen) {
 		p.emitMissingToken(token.LParen, "condition")
-		n := p.storeNode(Node{Kind: KindParenthesizedExpression, HasError: true})
+		n := p.sink.Store(Node{Kind: KindParenthesizedExpression, HasError: true})
 		return n
 	}
 	return p.parseParenthesized()
 }
 
-func (p *parser) parseWhileStatement() *Node {
+func (p *parser[N, S]) parseWhileStatement() N {
 	kw := p.advance()
 	condition := p.parseParenCondition()
 	body := p.parseControlledStatement()
-	node := p.newNode(KindWhileStatement, condition, body)
-	p.setField(node, fieldCondition, condition)
-	p.setField(node, fieldBody, body)
-	node.Tok = kw
-	node.Start = kw.Start.Offset
-	node.Leading = kw.LeadingTrivia
+	node := p.sink.NewNode(KindWhileStatement, condition, body)
+	p.sink.SetField(node, fieldCondition, condition)
+	p.sink.SetField(node, fieldBody, body)
+	p.sink.SetToken(node, kw)
+	p.sink.SetStart(node, kw.Start.Offset)
+	p.sink.SetLeading(node, kw.LeadingTrivia)
 	return node
 }
 
-func (p *parser) parseDoWhileStatement() *Node {
+func (p *parser[N, S]) parseDoWhileStatement() N {
 	kw := p.advance()
 	body := p.parseControlledStatement()
-	node := p.storeNode(Node{Kind: KindDoWhileStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-	p.setField(node, fieldBody, body)
-	p.addChild(node, body)
+	node := p.sink.Store(Node{Kind: KindDoWhileStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+	p.sink.SetField(node, fieldBody, body)
+	p.sink.AddChild(node, body)
 	if p.at(token.KwWhile) {
 		p.advance()
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 	condition := p.parseParenCondition()
-	p.setField(node, fieldCondition, condition)
-	p.addChild(node, condition)
+	p.sink.SetField(node, fieldCondition, condition)
+	p.sink.AddChild(node, condition)
 	p.consumeTrailingSemi(node)
 	return node
 }
 
-func (p *parser) parseForInit() *Node {
+func (p *parser[N, S]) parseForInit() N {
 	if !p.at(token.KwNew) && !p.at(token.KwStatic) {
 		return p.parseExpression()
 	}
 	kw := p.advance()
-	node := p.storeNode(Node{Kind: KindVariableDeclaration, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-	p.addChild(node, p.newLeaf(KindIdentifier, kw))
+	node := p.sink.Store(Node{Kind: KindVariableDeclaration, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+	p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, kw))
 	for _, d := range p.parseDeclaratorList() {
-		p.addChild(node, d)
+		p.sink.AddChild(node, d)
 	}
 	return node
 }
 
-func (p *parser) parseForStatement() *Node {
+func (p *parser[N, S]) parseForStatement() N {
 	kw := p.advance()
-	node := p.storeNode(Node{Kind: KindForStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+	node := p.sink.Store(Node{Kind: KindForStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
 	if !p.at(token.LParen) {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		return node
 	}
 	p.advance()
 
 	if !p.at(token.Semicolon) {
 		init := p.parseForInit()
-		p.setField(node, fieldInit, init)
-		p.addChild(node, init)
+		p.sink.SetField(node, fieldInit, init)
+		p.sink.AddChild(node, init)
 	}
 	if p.at(token.Semicolon) {
 		p.advance()
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 
 	if !p.at(token.Semicolon) {
 		cond := p.parseExpression()
-		p.setField(node, fieldCondition, cond)
-		p.addChild(node, cond)
+		p.sink.SetField(node, fieldCondition, cond)
+		p.sink.AddChild(node, cond)
 	}
 	if p.at(token.Semicolon) {
 		p.advance()
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 
 	if !p.at(token.RParen) {
 		update := p.parseExpression()
-		p.setField(node, fieldIncrement, update)
-		p.addChild(node, update)
+		p.sink.SetField(node, fieldIncrement, update)
+		p.sink.AddChild(node, update)
 	}
 	if p.at(token.RParen) {
 		p.advance()
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 
 	body := p.parseControlledStatement()
-	p.setField(node, fieldBody, body)
-	p.addChild(node, body)
+	p.sink.SetField(node, fieldBody, body)
+	p.sink.AddChild(node, body)
 	return node
 }

@@ -58,35 +58,35 @@ func isAssignOp(k token.Kind) bool {
 	}
 }
 
-func (p *parser) parseExpression() *Node {
+func (p *parser[N, S]) parseExpression() N {
 	first := p.parseAssignment()
 	if !p.at(token.Comma) {
 		return first
 	}
-	list := p.storeNode(Node{Kind: KindExpressionList, Start: first.Start, Leading: first.Leading})
-	p.addChild(list, first)
+	list := p.sink.Store(Node{Kind: KindExpressionList, Start: p.sink.Start(first), Leading: p.sink.Leading(first)})
+	p.sink.AddChild(list, first)
 	for p.at(token.Comma) {
 		p.advance()
-		p.addChild(list, p.parseAssignment())
+		p.sink.AddChild(list, p.parseAssignment())
 	}
 	return list
 }
 
-func (p *parser) parseAssignment() *Node {
+func (p *parser[N, S]) parseAssignment() N {
 	left := p.parseTernary()
 	if isAssignOp(p.curKind()) {
 		opTok := p.advance()
 		right := p.parseAssignment()
-		node := p.newNode(KindAssignmentExpression, left, right)
-		p.setField(node, fieldLeft, left)
-		p.setField(node, fieldRight, right)
-		node.Tok = opTok
+		node := p.sink.NewNode(KindAssignmentExpression, left, right)
+		p.sink.SetField(node, fieldLeft, left)
+		p.sink.SetField(node, fieldRight, right)
+		p.sink.SetToken(node, opTok)
 		return node
 	}
 	return left
 }
 
-func (p *parser) parseTernary() *Node {
+func (p *parser[N, S]) parseTernary() N {
 	cond := p.parseBinary(bpLogicalOr)
 	if !p.at(token.Question) {
 		return cond
@@ -97,20 +97,20 @@ func (p *parser) parseTernary() *Node {
 	consequence := p.parseAssignment()
 	p.suppressTagCast = savedSuppressTagCast
 	if !p.at(token.Colon) {
-		node := p.newNode(KindTernaryExpression, cond, consequence)
-		node.HasError = true
+		node := p.sink.NewNode(KindTernaryExpression, cond, consequence)
+		p.sink.SetHasError(node, true)
 		return node
 	}
 	p.advance()
 	alternative := p.parseAssignment()
-	node := p.newNode(KindTernaryExpression, cond, consequence, alternative)
-	p.setField(node, fieldCondition, cond)
-	p.setField(node, fieldConsequence, consequence)
-	p.setField(node, fieldAlternative, alternative)
+	node := p.sink.NewNode(KindTernaryExpression, cond, consequence, alternative)
+	p.sink.SetField(node, fieldCondition, cond)
+	p.sink.SetField(node, fieldConsequence, consequence)
+	p.sink.SetField(node, fieldAlternative, alternative)
 	return node
 }
 
-func (p *parser) parseBinary(minBP int) *Node {
+func (p *parser[N, S]) parseBinary(minBP int) N {
 	left := p.parseUnary()
 	for {
 		bp, ok := binaryBindingPower(p.curKind())
@@ -119,10 +119,10 @@ func (p *parser) parseBinary(minBP int) *Node {
 		}
 		opTok := p.advance()
 		right := p.parseBinary(bp + 1)
-		node := p.newNode(KindBinaryExpression, left, right)
-		p.setField(node, fieldLeft, left)
-		p.setField(node, fieldRight, right)
-		node.Tok = opTok
+		node := p.sink.NewNode(KindBinaryExpression, left, right)
+		p.sink.SetField(node, fieldLeft, left)
+		p.sink.SetField(node, fieldRight, right)
+		p.sink.SetToken(node, opTok)
 		left = node
 	}
 }
@@ -136,13 +136,13 @@ func isUnaryOp(k token.Kind) bool {
 	}
 }
 
-func (p *parser) parseUnary() *Node {
+func (p *parser[N, S]) parseUnary() N {
 	if !p.enterDepth() {
 		defer p.exitDepth()
 		p.broken = true
 		tok := p.cur()
-		n := p.newLeaf(KindLiteral, tok)
-		n.HasError = true
+		n := p.sink.NewLeaf(KindLiteral, tok)
+		p.sink.SetHasError(n, true)
 		return n
 	}
 	defer p.exitDepth()
@@ -150,21 +150,21 @@ func (p *parser) parseUnary() *Node {
 	if p.isMacroUnaryOperator() {
 		opTok := p.advance()
 		operand := p.parseUnary()
-		node := p.newNode(KindUnaryExpression, operand)
-		p.setField(node, fieldExpression, operand)
-		node.Tok = opTok
-		node.Start = opTok.Start.Offset
-		node.Leading = opTok.LeadingTrivia
+		node := p.sink.NewNode(KindUnaryExpression, operand)
+		p.sink.SetField(node, fieldExpression, operand)
+		p.sink.SetToken(node, opTok)
+		p.sink.SetStart(node, opTok.Start.Offset)
+		p.sink.SetLeading(node, opTok.LeadingTrivia)
 		return node
 	}
 	if isUnaryOp(p.curKind()) {
 		opTok := p.advance()
 		operand := p.parseUnary()
-		node := p.newNode(KindUnaryExpression, operand)
-		p.setField(node, fieldExpression, operand)
-		node.Tok = opTok
-		node.Start = opTok.Start.Offset
-		node.Leading = opTok.LeadingTrivia
+		node := p.sink.NewNode(KindUnaryExpression, operand)
+		p.sink.SetField(node, fieldExpression, operand)
+		p.sink.SetToken(node, opTok)
+		p.sink.SetStart(node, opTok.Start.Offset)
+		p.sink.SetLeading(node, opTok.LeadingTrivia)
 		return node
 	}
 	if p.at(token.KwSizeof) {
@@ -182,100 +182,100 @@ func (p *parser) parseUnary() *Node {
 	return p.parsePostfix()
 }
 
-func (p *parser) isMacroUnaryOperator() bool {
+func (p *parser[N, S]) isMacroUnaryOperator() bool {
 	return p.at(token.Identifier) && p.peekKind(1) == token.Identifier
 }
 
-func isTagCastStart(p *parser) bool {
+func isTagCastStart[N comparable, S nodeSink[N]](p *parser[N, S]) bool {
 	if p.curKind() != token.Identifier || p.peekKind(1) != token.Colon {
 		return false
 	}
 	return !p.suppressTagCast || p.knowsTag(p.cur().Text(p.source))
 }
 
-func (p *parser) parseTaggedExpression() *Node {
+func (p *parser[N, S]) parseTaggedExpression() N {
 	tagTok := p.advance()
-	tag := p.newLeaf(KindIdentifier, tagTok)
+	tag := p.sink.NewLeaf(KindIdentifier, tagTok)
 	colon := p.advance()
 	if p.at(token.RParen) || p.at(token.Comma) || p.at(token.Semicolon) {
-		node := p.newNode(KindTaggedExpression, tag)
-		p.setField(node, fieldTag, tag)
-		node.End = colon.End.Offset
-		node.Trailing = colon.TrailingTrivia
+		node := p.sink.NewNode(KindTaggedExpression, tag)
+		p.sink.SetField(node, fieldTag, tag)
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		return node
 	}
 	operand := p.parseUnary()
-	node := p.newNode(KindTaggedExpression, tag, operand)
-	p.setField(node, fieldTag, tag)
-	p.setField(node, fieldExpression, operand)
+	node := p.sink.NewNode(KindTaggedExpression, tag, operand)
+	p.sink.SetField(node, fieldTag, tag)
+	p.sink.SetField(node, fieldExpression, operand)
 	return node
 }
 
-func (p *parser) parseSizeofLike(kind Kind) *Node {
+func (p *parser[N, S]) parseSizeofLike(kind Kind) N {
 	kwTok := p.advance()
 	if p.at(token.LParen) {
 		p.advance()
 		inner := p.parseExpression()
-		node := p.newNode(kind, inner)
-		p.setField(node, fieldExpression, inner)
-		node.Tok = kwTok
-		node.Start = kwTok.Start.Offset
-		node.Leading = kwTok.LeadingTrivia
+		node := p.sink.NewNode(kind, inner)
+		p.sink.SetField(node, fieldExpression, inner)
+		p.sink.SetToken(node, kwTok)
+		p.sink.SetStart(node, kwTok.Start.Offset)
+		p.sink.SetLeading(node, kwTok.LeadingTrivia)
 		if p.at(token.RParen) {
 			rp := p.advance()
-			node.End = rp.End.Offset
-			node.Trailing = rp.TrailingTrivia
+			p.sink.SetEnd(node, rp.End.Offset)
+			p.sink.SetTrailing(node, rp.TrailingTrivia)
 		} else {
-			node.HasError = true
+			p.sink.SetHasError(node, true)
 		}
 		return node
 	}
 
 	if !p.at(token.Identifier) {
-		leaf := p.newLeaf(KindIdentifier, kwTok)
-		leaf.HasError = true
+		leaf := p.sink.NewLeaf(KindIdentifier, kwTok)
+		p.sink.SetHasError(leaf, true)
 		return leaf
 	}
 	operand := p.parsePrimary()
 	for p.at(token.LBracket) {
 		operand = p.parseSubscript(operand)
 	}
-	node := p.newNode(kind, operand)
-	p.setField(node, fieldExpression, operand)
-	node.Tok = kwTok
-	node.Start = kwTok.Start.Offset
-	node.Leading = kwTok.LeadingTrivia
+	node := p.sink.NewNode(kind, operand)
+	p.sink.SetField(node, fieldExpression, operand)
+	p.sink.SetToken(node, kwTok)
+	p.sink.SetStart(node, kwTok.Start.Offset)
+	p.sink.SetLeading(node, kwTok.LeadingTrivia)
 	return node
 }
 
-func (p *parser) parseDefinedExpression() *Node {
+func (p *parser[N, S]) parseDefinedExpression() N {
 	kwTok := p.advance()
 	if !p.at(token.LParen) {
 		if p.at(token.Identifier) {
-			name := p.newLeaf(KindIdentifier, p.advance())
-			node := p.newNode(KindDefinedExpression, name)
-			p.setField(node, fieldName, name)
-			node.Tok = kwTok
+			name := p.sink.NewLeaf(KindIdentifier, p.advance())
+			node := p.sink.NewNode(KindDefinedExpression, name)
+			p.sink.SetField(node, fieldName, name)
+			p.sink.SetToken(node, kwTok)
 			return node
 		}
-		leaf := p.newLeaf(KindIdentifier, kwTok)
-		leaf.HasError = true
+		leaf := p.sink.NewLeaf(KindIdentifier, kwTok)
+		p.sink.SetHasError(leaf, true)
 		return leaf
 	}
 	p.advance()
-	var name *Node
+	var name N
 	if p.at(token.Identifier) {
-		name = p.newLeaf(KindIdentifier, p.advance())
+		name = p.sink.NewLeaf(KindIdentifier, p.advance())
 	}
-	node := p.newNode(KindDefinedExpression, name)
-	p.setField(node, fieldName, name)
-	node.Tok = kwTok
+	node := p.sink.NewNode(KindDefinedExpression, name)
+	p.sink.SetField(node, fieldName, name)
+	p.sink.SetToken(node, kwTok)
 	if p.at(token.RParen) {
 		rp := p.advance()
-		node.End = rp.End.Offset
-		node.Trailing = rp.TrailingTrivia
+		p.sink.SetEnd(node, rp.End.Offset)
+		p.sink.SetTrailing(node, rp.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 	return node
 }

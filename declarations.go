@@ -12,7 +12,7 @@ func isKeywordToken(k token.Kind) bool {
 	return k >= token.KwPublic && k <= token.KwNull
 }
 
-func (p *parser) parseDeclaration() *Node {
+func (p *parser[N, S]) parseDeclaration() N {
 	if p.peekIsOperatorMacroInvocation() {
 		return p.parseOperatorMacroInvocation()
 	}
@@ -31,18 +31,18 @@ func (p *parser) parseDeclaration() *Node {
 	if !p.canStartDeclarator() && (len(quals) == 0 || !p.at(token.Hash) || p.peekDirectiveKeyword() != dirIf) {
 		start := p.cur().Start.Offset
 		if len(quals) > 0 {
-			start = quals[0].Start
+			start = p.sink.Start(quals[0])
 		}
-		n := p.storeNode(Node{Kind: KindRaw, Start: start, End: p.cur().Start.Offset, HasError: true})
+		n := p.sink.Store(Node{Kind: KindRaw, Start: start, End: p.cur().Start.Offset, HasError: true})
 		for _, q := range quals {
-			p.addChild(n, q)
+			p.sink.AddChild(n, q)
 		}
 		return n
 	}
 	return p.parseVariableDeclarationWithQualifiers(quals)
 }
 
-func (p *parser) peekIsOperatorMacroInvocation() bool {
+func (p *parser[N, S]) peekIsOperatorMacroInvocation() bool {
 	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen {
 		return false
 	}
@@ -56,7 +56,7 @@ func (p *parser) peekIsOperatorMacroInvocation() bool {
 	}
 }
 
-func (p *parser) parseOperatorMacroInvocation() *Node {
+func (p *parser[N, S]) parseOperatorMacroInvocation() N {
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
 	depth := 0
@@ -78,35 +78,35 @@ func (p *parser) parseOperatorMacroInvocation() *Node {
 	return p.directiveSpan(KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
 }
 
-func (p *parser) canStartDeclarator() bool {
+func (p *parser[N, S]) canStartDeclarator() bool {
 	saved := p.pos
 	defer func() { p.pos = saved }()
 	p.parseOptionalTagPrefix()
 	return p.at(token.Identifier)
 }
 
-func (p *parser) collectQualifiers() []*Node {
-	var quals []*Node
+func (p *parser[N, S]) collectQualifiers() []N {
+	var quals []N
 	for {
 		switch {
 		case p.annotationQualifierStart():
-			quals = p.appendNode(quals, p.parseAnnotationQualifier())
+			quals = p.sink.Append(quals, p.parseAnnotationQualifier())
 		case slices.Contains(qualifierKinds, p.curKind()):
-			quals = p.appendNode(quals, p.newLeaf(KindIdentifier, p.advance()))
+			quals = p.sink.Append(quals, p.sink.NewLeaf(KindIdentifier, p.advance()))
 		case p.macroFunctionQualifierStart():
-			quals = p.appendNode(quals, p.newLeaf(KindIdentifier, p.advance()))
+			quals = p.sink.Append(quals, p.sink.NewLeaf(KindIdentifier, p.advance()))
 		default:
 			return quals
 		}
 	}
 }
 
-func (p *parser) parseAnnotationQualifier() *Node {
-	name := p.newLeaf(KindIdentifier, p.advance())
+func (p *parser[N, S]) parseAnnotationQualifier() N {
+	name := p.sink.NewLeaf(KindIdentifier, p.advance())
 	return p.parseCall(name)
 }
 
-func (p *parser) annotationQualifierStart() bool {
+func (p *parser[N, S]) annotationQualifierStart() bool {
 	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen || p.cur().Text(p.source)[0] != '@' {
 		return false
 	}
@@ -117,7 +117,7 @@ func (p *parser) annotationQualifierStart() bool {
 	return p.peekIsFunctionDecl() || p.macroFunctionQualifierStart()
 }
 
-func (p *parser) macroFunctionQualifierStart() bool {
+func (p *parser[N, S]) macroFunctionQualifierStart() bool {
 	if !p.at(token.Identifier) {
 		return false
 	}
@@ -146,7 +146,7 @@ func isFunctionNameToken(kind token.Kind) bool {
 	return kind == token.Identifier || isKeywordToken(kind)
 }
 
-func (p *parser) peekIsFunctionDecl() bool {
+func (p *parser[N, S]) peekIsFunctionDecl() bool {
 	saved := p.pos
 	defer func() { p.pos = saved }()
 
@@ -185,24 +185,24 @@ func isOverloadableOperator(k token.Kind) bool {
 	}
 }
 
-func (p *parser) parseFunctionName() *Node {
+func (p *parser[N, S]) parseFunctionName() N {
 	if p.at(token.KwOperator) {
 		opKw := p.advance()
 		if isOverloadableOperator(p.curKind()) {
 			symTok := p.advance()
-			return p.storeNode(Node{
+			return p.sink.Store(Node{
 				Kind: KindIdentifier, Start: opKw.Start.Offset, End: symTok.End.Offset,
 				Leading: opKw.LeadingTrivia, Trailing: symTok.TrailingTrivia,
 			})
 		}
-		name := p.newLeaf(KindIdentifier, opKw)
-		name.HasError = true
+		name := p.sink.NewLeaf(KindIdentifier, opKw)
+		p.sink.SetHasError(name, true)
 		return name
 	}
 	validName := isFunctionNameToken(p.curKind())
 	name := p.parseQualifiedIdentifier()
 	if !validName {
-		name.HasError = true
+		p.sink.SetHasError(name, true)
 	}
 	return name
 }

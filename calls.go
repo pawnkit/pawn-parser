@@ -2,7 +2,7 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parsePostfix() *Node {
+func (p *parser[N, S]) parsePostfix() N {
 	expr := p.parsePrimary()
 	for {
 		switch p.curKind() {
@@ -16,20 +16,20 @@ func (p *parser) parsePostfix() *Node {
 			expr = p.parseMemberSelection(expr)
 		case token.PlusPlus, token.MinusMinus:
 			opTok := p.advance()
-			node := p.newNode(KindUpdateExpression, expr)
-			p.setField(node, fieldExpression, expr)
-			node.Tok = opTok
+			node := p.sink.NewNode(KindUpdateExpression, expr)
+			p.sink.SetField(node, fieldExpression, expr)
+			p.sink.SetToken(node, opTok)
 			expr = node
 		case token.Identifier:
 			opTok := p.advance()
-			node := p.newNode(KindUnaryExpression, expr)
-			p.setField(node, fieldExpression, expr)
-			node.Tok = opTok
-			node.End = opTok.End.Offset
-			node.Trailing = opTok.TrailingTrivia
+			node := p.sink.NewNode(KindUnaryExpression, expr)
+			p.sink.SetField(node, fieldExpression, expr)
+			p.sink.SetToken(node, opTok)
+			p.sink.SetEnd(node, opTok.End.Offset)
+			p.sink.SetTrailing(node, opTok.TrailingTrivia)
 			expr = node
 		case token.Lt:
-			if expr.End != p.cur().Start.Offset || !p.hasAngleClose(p.pos) {
+			if p.sink.End(expr) != p.cur().Start.Offset || !p.hasAngleClose(p.pos) {
 				return expr
 			}
 			expr = p.parseMacroPostfixSelection(expr)
@@ -39,9 +39,9 @@ func (p *parser) parsePostfix() *Node {
 	}
 }
 
-func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
+func (p *parser[N, S]) parseMacroPostfixSelection(target N) N {
 	lt := p.advance()
-	children := []*Node{target}
+	children := []N{target}
 	depth := 1
 	last := lt
 	for !p.atEnd() && depth > 0 {
@@ -53,69 +53,69 @@ func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
 		case token.Gt:
 			depth--
 		case token.Identifier, token.MacroParam:
-			children = p.appendNode(children, p.newLeaf(KindIdentifier, tok))
+			children = p.sink.Append(children, p.sink.NewLeaf(KindIdentifier, tok))
 		case token.IntLiteral, token.FloatLiteral, token.CharLiteral, token.StringLiteral, token.PackedString:
-			children = p.appendNode(children, p.newLeaf(KindLiteral, tok))
+			children = p.sink.Append(children, p.sink.NewLeaf(KindLiteral, tok))
 		default:
 		}
 	}
-	node := p.directiveSpan(KindMacroBody, target.Start, last.End.Offset, target.Leading, last.TrailingTrivia)
-	node.Tok = lt
-	node.Children = children
-	p.setField(node, fieldTarget, target)
+	node := p.directiveSpan(KindMacroBody, p.sink.Start(target), last.End.Offset, p.sink.Leading(target), last.TrailingTrivia)
+	p.sink.SetToken(node, lt)
+	p.sink.SetChildren(node, children)
+	p.sink.SetField(node, fieldTarget, target)
 	return node
 }
 
-func (p *parser) parseCellSelection(target *Node) *Node {
+func (p *parser[N, S]) parseCellSelection(target N) N {
 	open := p.advance()
 	index := p.parseExpression()
-	node := p.newNode(KindSubscriptExpression, target, index)
-	node.Tok = open
-	p.setField(node, fieldArray, target)
-	p.setField(node, fieldIndex, index)
+	node := p.sink.NewNode(KindSubscriptExpression, target, index)
+	p.sink.SetToken(node, open)
+	p.sink.SetField(node, fieldArray, target)
+	p.sink.SetField(node, fieldIndex, index)
 	if p.at(token.RBrace) {
 		rb := p.advance()
-		node.End = rb.End.Offset
-		node.Trailing = rb.TrailingTrivia
+		p.sink.SetEnd(node, rb.End.Offset)
+		p.sink.SetTrailing(node, rb.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RBrace, "cell selection")
 	}
 	return node
 }
 
-func (p *parser) parseMemberSelection(target *Node) *Node {
+func (p *parser[N, S]) parseMemberSelection(target N) N {
 	op := p.advance()
 	if !p.at(token.Identifier) && !p.at(token.MacroParam) && !isKeywordToken(p.curKind()) {
-		node := p.newNode(KindBinaryExpression, target)
-		node.Tok = op
-		node.End = op.End.Offset
-		node.Trailing = op.TrailingTrivia
-		node.HasError = true
-		node.ErrorMessage = "expected identifier after " + op.Kind.String()
-		node.ErrorOffset = p.cur().Start.Offset
-		node.ErrorFound = p.curKind()
-		node.ErrorExpected = []token.Kind{token.Identifier}
-		p.emitMissing(DiagnosticMissingIdentifier, node.ErrorMessage, token.Identifier)
+		node := p.sink.NewNode(KindBinaryExpression, target)
+		p.sink.SetToken(node, op)
+		p.sink.SetEnd(node, op.End.Offset)
+		p.sink.SetTrailing(node, op.TrailingTrivia)
+		p.sink.SetHasError(node, true)
+		p.sink.SetErrorMessage(node, "expected identifier after "+op.Kind.String())
+		p.sink.SetErrorOffset(node, p.cur().Start.Offset)
+		p.sink.SetErrorFound(node, p.curKind())
+		p.sink.SetErrorExpected(node, []token.Kind{token.Identifier})
+		p.emitMissing(DiagnosticMissingIdentifier, p.sink.ErrorMessage(node), token.Identifier)
 		return node
 	}
-	member := p.newLeaf(KindIdentifier, p.advance())
-	node := p.newNode(KindBinaryExpression, target, member)
-	p.setField(node, fieldLeft, target)
-	p.setField(node, fieldRight, member)
-	node.Tok = op
+	member := p.sink.NewLeaf(KindIdentifier, p.advance())
+	node := p.sink.NewNode(KindBinaryExpression, target, member)
+	p.sink.SetField(node, fieldLeft, target)
+	p.sink.SetField(node, fieldRight, member)
+	p.sink.SetToken(node, op)
 	return node
 }
 
-func (p *parser) parseCall(callee *Node) *Node {
+func (p *parser[N, S]) parseCall(callee N) N {
 	args := p.parseArgumentList()
-	node := p.newNode(KindCallExpression, callee, args)
-	p.setField(node, fieldFunction, callee)
-	p.setField(node, fieldArguments, args)
+	node := p.sink.NewNode(KindCallExpression, callee, args)
+	p.sink.SetField(node, fieldFunction, callee)
+	p.sink.SetField(node, fieldArguments, args)
 	return node
 }
 
-func (p *parser) parseCallArgument() *Node {
+func (p *parser[N, S]) parseCallArgument() N {
 	if p.at(token.KwNew) && p.peekKind(1) == token.Identifier &&
 		p.peekKind(2) == token.Colon && p.peekKind(3) == token.Identifier &&
 		(p.peekKind(4) == token.Comma || p.peekKind(4) == token.RParen) {
@@ -123,7 +123,7 @@ func (p *parser) parseCallArgument() *Node {
 		p.advance()
 		p.advance()
 		last := p.advance()
-		return p.storeNode(Node{
+		return p.sink.Store(Node{
 			Kind:     KindIteratorArgument,
 			Start:    first.Start.Offset,
 			End:      last.End.Offset,
@@ -136,39 +136,39 @@ func (p *parser) parseCallArgument() *Node {
 	}
 	dot := p.advance()
 	if !p.at(token.Identifier) {
-		n := p.newLeaf(KindRaw, dot)
-		n.HasError = true
+		n := p.sink.NewLeaf(KindRaw, dot)
+		p.sink.SetHasError(n, true)
 		return n
 	}
 	nameTok := p.advance()
-	name := p.storeNode(Node{Kind: KindArgumentName, Tok: nameTok, Start: dot.Start.Offset, End: nameTok.End.Offset, Leading: dot.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
+	name := p.sink.Store(Node{Kind: KindArgumentName, Tok: nameTok, Start: dot.Start.Offset, End: nameTok.End.Offset, Leading: dot.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
 	if !p.at(token.Assign) {
-		name.HasError = true
+		p.sink.SetHasError(name, true)
 		return name
 	}
 	opTok := p.advance()
 	right := p.parseAssignment()
-	node := p.newNode(KindAssignmentExpression, name, right)
-	p.setField(node, fieldLeft, name)
-	p.setField(node, fieldRight, right)
-	node.Tok = opTok
+	node := p.sink.NewNode(KindAssignmentExpression, name, right)
+	p.sink.SetField(node, fieldLeft, name)
+	p.sink.SetField(node, fieldRight, right)
+	p.sink.SetToken(node, opTok)
 	return node
 }
 
-func (p *parser) parseArgumentList() *Node {
+func (p *parser[N, S]) parseArgumentList() N {
 	lp := p.advance()
-	node := p.storeNode(Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
+	node := p.sink.Store(Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	for !p.atEnd() && !p.at(token.RParen) {
 		startPos := p.pos
 		endPos := p.argumentEnd(startPos)
 		wasBroken := p.broken
 		arg := p.parseCallArgument()
-		if arg == nil || arg.HasError || p.broken || p.pos != endPos {
+		if arg == p.sink.Nil() || p.sink.HasError(arg) || p.broken || p.pos != endPos {
 			p.pos = startPos
 			p.broken = wasBroken
 			arg = p.consumeStructuredMacroArgument(endPos)
 		}
-		p.addChild(node, arg)
+		p.sink.AddChild(node, arg)
 		if p.at(token.Comma) {
 			comma := p.advance()
 			p.mergeCommaTrivia(arg, comma)
@@ -176,16 +176,16 @@ func (p *parser) parseArgumentList() *Node {
 	}
 	if p.at(token.RParen) {
 		rp := p.advance()
-		node.End = rp.End.Offset
-		node.Trailing = rp.TrailingTrivia
+		p.sink.SetEnd(node, rp.End.Offset)
+		p.sink.SetTrailing(node, rp.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RParen, "argument list")
 	}
 	return node
 }
 
-func (p *parser) argumentEnd(start int) int {
+func (p *parser[N, S]) argumentEnd(start int) int {
 	parenDepth, bracketDepth, braceDepth, angleDepth := 0, 0, 0, 0
 	for i := start; i < len(p.toks); i++ {
 		kind := p.toks[i].Kind
@@ -220,7 +220,7 @@ func (p *parser) argumentEnd(start int) int {
 	return len(p.toks) - 1
 }
 
-func (p *parser) hasAngleClose(start int) bool {
+func (p *parser[N, S]) hasAngleClose(start int) bool {
 	depth := 1
 	for i := start + 1; i < len(p.toks); i++ {
 		switch p.toks[i].Kind {
@@ -239,22 +239,22 @@ func (p *parser) hasAngleClose(start int) bool {
 	return false
 }
 
-func (p *parser) consumeStructuredMacroArgument(endPos int) *Node {
+func (p *parser[N, S]) consumeStructuredMacroArgument(endPos int) N {
 	start := p.cur()
 	last := start
-	var parts []*Node
+	var parts []N
 	for p.pos < endPos {
 		kind := p.curKind()
 		last = p.advance()
 		switch {
 		case kind == token.Identifier || kind == token.MacroParam || isKeywordToken(kind):
-			parts = p.appendNode(parts, p.newLeaf(KindIdentifier, last))
+			parts = p.sink.Append(parts, p.sink.NewLeaf(KindIdentifier, last))
 		case isLiteralToken(kind):
-			parts = p.appendNode(parts, p.newLeaf(KindLiteral, last))
+			parts = p.sink.Append(parts, p.sink.NewLeaf(KindLiteral, last))
 		}
 	}
 	node := p.directiveSpan(KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)
-	node.Children = parts
+	p.sink.SetChildren(node, parts)
 	return node
 }
 
@@ -267,22 +267,22 @@ func isLiteralToken(kind token.Kind) bool {
 	}
 }
 
-func (p *parser) parseSubscript(target *Node) *Node {
+func (p *parser[N, S]) parseSubscript(target N) N {
 	open := p.advance()
-	var index *Node
+	var index N
 	if !p.at(token.RBracket) {
 		index = p.parseExpression()
 	}
-	node := p.newNode(KindSubscriptExpression, target, index)
-	node.Tok = open
-	p.setField(node, fieldArray, target)
-	p.setField(node, fieldIndex, index)
+	node := p.sink.NewNode(KindSubscriptExpression, target, index)
+	p.sink.SetToken(node, open)
+	p.sink.SetField(node, fieldArray, target)
+	p.sink.SetField(node, fieldIndex, index)
 	if p.at(token.RBracket) {
 		rb := p.advance()
-		node.End = rb.End.Offset
-		node.Trailing = rb.TrailingTrivia
+		p.sink.SetEnd(node, rb.End.Offset)
+		p.sink.SetTrailing(node, rb.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RBracket, "subscript")
 	}
 	return node

@@ -6,24 +6,24 @@ import (
 	"github.com/pawnkit/pawn-parser/token"
 )
 
-func (p *parser) parseConditionalRegion(g itemGrammar) *Node {
+func (p *parser[N, S]) parseConditionalRegion(g itemGrammar[N, S]) N {
 	startPos := p.pos
 	savedBroken := p.broken
-	storageMark := p.storage.mark()
+	storageMark := p.sink.Mark()
 	region, ok := p.tryParseConditionalRegion(g)
 	if ok {
 		return region
 	}
 	p.pos = startPos
 	p.broken = savedBroken
-	p.storage.rewind(storageMark)
+	p.sink.Rewind(storageMark)
 	if p.isConditionalSplice() {
 		return p.consumeConditionalSplice()
 	}
 	return p.rawConditionalRegion()
 }
 
-func (p *parser) isConditionalSplice() bool {
+func (p *parser[N, S]) isConditionalSplice() bool {
 	end, braceDelta, ok := p.conditionalRegionExtent(p.pos)
 	if !ok {
 		return false
@@ -34,7 +34,7 @@ func (p *parser) isConditionalSplice() bool {
 	return braceDelta > 0 && p.hasClosingConditionalSplice(end)
 }
 
-func (p *parser) hasClosingConditionalSplice(pos int) bool {
+func (p *parser[N, S]) hasClosingConditionalSplice(pos int) bool {
 	depth := 0
 	for pos < len(p.toks) && p.toks[pos].Kind != token.EOF {
 		switch p.toks[pos].Kind {
@@ -67,7 +67,7 @@ func (p *parser) hasClosingConditionalSplice(pos int) bool {
 	return false
 }
 
-func (p *parser) conditionalRegionExtent(start int) (end, braceDelta int, ok bool) {
+func (p *parser[N, S]) conditionalRegionExtent(start int) (end, braceDelta int, ok bool) {
 	depth := 0
 	for pos := start; pos < len(p.toks); pos++ {
 		tok := p.toks[pos]
@@ -97,7 +97,7 @@ func (p *parser) conditionalRegionExtent(start int) (end, braceDelta int, ok boo
 	return start, 0, false
 }
 
-func (p *parser) afterLogicalLine(pos int) int {
+func (p *parser[N, S]) afterLogicalLine(pos int) int {
 	for pos < len(p.toks) {
 		pos++
 		if pos == len(p.toks) || lastTokenEndsLine(p.toks[pos-1]) {
@@ -107,14 +107,14 @@ func (p *parser) afterLogicalLine(pos int) int {
 	return pos
 }
 
-func (p *parser) peekAt(pos int) token.Token {
+func (p *parser[N, S]) peekAt(pos int) token.Token {
 	if pos >= len(p.toks) {
 		return p.toks[len(p.toks)-1]
 	}
 	return p.toks[pos]
 }
 
-func (p *parser) consumeConditionalSplice() *Node {
+func (p *parser[N, S]) consumeConditionalSplice() N {
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
 	depth := 0
@@ -134,7 +134,7 @@ func (p *parser) consumeConditionalSplice() *Node {
 			break
 		}
 	}
-	return p.storeNode(Node{
+	return p.sink.Store(Node{
 		Kind:     KindConditionalSplice,
 		Start:    start,
 		End:      last.End.Offset,
@@ -144,11 +144,11 @@ func (p *parser) consumeConditionalSplice() *Node {
 	})
 }
 
-func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) {
+func (p *parser[N, S]) tryParseConditionalRegion(g itemGrammar[N, S]) (node N, ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, isAbort := r.(condAbort); isAbort {
-				node, ok = nil, false
+				node, ok = p.sink.Nil(), false
 				return
 			}
 			panic(r)
@@ -158,64 +158,65 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 	p.condDepth++
 	defer func() { p.condDepth-- }()
 	if p.condDepth > maxParseDepth {
-		return nil, false
+		return p.sink.Nil(), false
 	}
 
-	region := p.storeNode(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
+	region := p.sink.Store(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		if !p.at(token.Hash) {
-			return nil, false
+			return p.sink.Nil(), false
 		}
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
-		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
-		p.setField(branch, fieldDirective, directive)
-		p.addChild(branch, directive)
-		p.addChild(region, branch)
+		branch := p.sink.Store(Node{Kind: KindConditionalBranch, Start: p.sink.Start(directive), End: p.sink.End(directive), Leading: p.sink.Leading(directive), Trailing: p.sink.Trailing(directive)})
+		p.sink.SetField(branch, fieldDirective, directive)
+		p.sink.AddChild(branch, directive)
+		p.sink.AddChild(region, branch)
 
 		if dk == dirEndif {
 			break
 		}
 		if dk != dirIf && dk != dirElseif && dk != dirElse {
-			return nil, false
+			return p.sink.Nil(), false
 		}
 
 		p.branchTop = true
 		items := p.parseItemSequence(g)
 		for _, it := range items {
-			p.addChild(branch, it)
+			p.sink.AddChild(branch, it)
 		}
 	}
-	if conditionalNeedsSharedFallback(region, p.source) && !conditionalFunctionHeaders(region) {
-		return nil, false
+	if p.conditionalNeedsSharedFallback(region, p.source) && !p.conditionalFunctionHeaders(region) {
+		return p.sink.Nil(), false
 	}
 	return region, true
 }
 
-func conditionalNeedsSharedFallback(region *Node, source []byte) bool {
-	for _, branch := range region.Children {
-		directive := branch.field(fieldDirective)
-		for _, item := range branch.Children {
-			if item == directive || item.Kind == KindConditionalRegion ||
-				item.Kind == KindSharedConditional || item.Kind == KindConditionalFunction {
+func (p *parser[N, S]) conditionalNeedsSharedFallback(region N, source []byte) bool {
+	for _, branch := range p.sink.Children(region) {
+		directive := p.sink.Field(branch, fieldDirective)
+		for _, item := range p.sink.Children(branch) {
+			if item == directive || p.sink.Kind(item) == KindConditionalRegion ||
+				p.sink.Kind(item) == KindSharedConditional || p.sink.Kind(item) == KindConditionalFunction {
 				continue
 			}
-			if item.HasError {
+			if p.sink.HasError(item) {
 				return true
 			}
-			if item.Kind == KindIfStatement {
-				consequence := item.field(fieldConsequence)
-				if consequence != nil && consequence.Kind == KindEmptyStatement && consequence.Start == consequence.End {
+			if p.sink.Kind(item) == KindIfStatement {
+				consequence := p.sink.Field(item, fieldConsequence)
+				if consequence != p.sink.Nil() && p.sink.Kind(consequence) == KindEmptyStatement && p.sink.Start(consequence) == p.sink.End(consequence) {
 					return true
 				}
 			}
-			switch item.Kind {
+			switch p.sink.Kind(item) {
 			case KindFunctionDeclaration, KindStateStatement, KindIfStatement:
-				if item.HasError {
+				if p.sink.HasError(item) {
 					return true
 				}
 			case KindExpressionStatement:
-				if item.HasError && strings.HasPrefix(strings.TrimSpace(item.Text(source)), "else") {
+				start, end := clampRange(source, p.sink.Start(item), p.sink.End(item))
+				if p.sink.HasError(item) && strings.HasPrefix(strings.TrimSpace(string(source[start:end])), "else") {
 					return true
 				}
 			default:
@@ -226,7 +227,7 @@ func conditionalNeedsSharedFallback(region *Node, source []byte) bool {
 	return false
 }
 
-func (p *parser) rawConditionalRegion() *Node {
+func (p *parser[N, S]) rawConditionalRegion() N {
 	startOffset := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
 
@@ -267,7 +268,7 @@ func (p *parser) rawConditionalRegion() *Node {
 		}
 		last = p.consumeLogicalLineCounting(allLive(), &bracketDepth)
 		if pastEndif {
-			if node := p.finishSharedConditional(startOffset, leading, last, bracketDepth); node != nil {
+			if node := p.finishSharedConditional(startOffset, leading, last, bracketDepth); node != p.sink.Nil() {
 				return node
 			}
 			if bracketDepth <= 0 {
@@ -275,7 +276,7 @@ func (p *parser) rawConditionalRegion() *Node {
 			}
 		}
 	}
-	return p.storeNode(Node{
+	return p.sink.Store(Node{
 		Kind:     KindSharedConditional,
 		Start:    startOffset,
 		End:      last.End.Offset,
@@ -285,50 +286,50 @@ func (p *parser) rawConditionalRegion() *Node {
 	})
 }
 
-func (p *parser) finishSharedConditional(start int, leading []token.Trivia, last token.Token, depth int) *Node {
-	prefix := p.storeNode(Node{Kind: KindSharedConditionalPrefix, Start: start, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[start:last.End.Offset]})
+func (p *parser[N, S]) finishSharedConditional(start int, leading []token.Trivia, last token.Token, depth int) N {
+	prefix := p.sink.Store(Node{Kind: KindSharedConditionalPrefix, Start: start, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[start:last.End.Offset]})
 	if depth == 0 && p.at(token.LBrace) {
 		return p.newSharedConditional(prefix, p.parseBlock())
 	}
 	if depth != 1 || p.atEnd() {
-		return nil
+		return p.sink.Nil()
 	}
-	body := p.storeNode(Node{Kind: KindBlock, Start: last.End.Offset})
-	items := p.parseItemSequence(itemGrammar{
-		parseItem: func(p *parser) *Node { return p.parseStatement() },
-		stop:      func(p *parser) bool { return p.at(token.RBrace) },
+	body := p.sink.Store(Node{Kind: KindBlock, Start: last.End.Offset})
+	items := p.parseItemSequence(itemGrammar[N, S]{
+		parseItem: func(p *parser[N, S]) N { return p.parseStatement() },
+		stop:      func(p *parser[N, S]) bool { return p.at(token.RBrace) },
 	})
 	for _, item := range items {
-		p.addChild(body, item)
+		p.sink.AddChild(body, item)
 	}
 	if !p.at(token.RBrace) {
-		return nil
+		return p.sink.Nil()
 	}
 	rb := p.advance()
-	body.End = rb.End.Offset
-	body.Trailing = rb.TrailingTrivia
+	p.sink.SetEnd(body, rb.End.Offset)
+	p.sink.SetTrailing(body, rb.TrailingTrivia)
 	return p.newSharedConditional(prefix, body)
 }
 
-func (p *parser) newSharedConditional(prefix, body *Node) *Node {
-	node := p.newNode(KindSharedConditional, prefix, body)
-	p.setField(node, fieldPrefix, prefix)
-	p.setField(node, fieldBody, body)
+func (p *parser[N, S]) newSharedConditional(prefix, body N) N {
+	node := p.sink.NewNode(KindSharedConditional, prefix, body)
+	p.sink.SetField(node, fieldPrefix, prefix)
+	p.sink.SetField(node, fieldBody, body)
 	p.parseSharedConditionalAlternative(node)
 	return node
 }
 
-func (p *parser) parseSharedConditionalAlternative(node *Node) {
+func (p *parser[N, S]) parseSharedConditionalAlternative(node N) {
 	if !p.at(token.KwElse) {
 		return
 	}
 	p.advance()
 	alternative := p.parseControlledStatement()
-	p.setField(node, fieldAlternative, alternative)
-	p.addChild(node, alternative)
+	p.sink.SetField(node, fieldAlternative, alternative)
+	p.sink.AddChild(node, alternative)
 }
 
-func (p *parser) consumeLogicalLineCounting(count bool, depth *int) token.Token {
+func (p *parser[N, S]) consumeLogicalLineCounting(count bool, depth *int) token.Token {
 	var last token.Token
 	for !p.atEnd() {
 		k := p.curKind()

@@ -2,19 +2,19 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseStateSelector() *Node {
+func (p *parser[N, S]) parseStateSelector() N {
 	if !p.at(token.Lt) {
-		return nil
+		return p.sink.Nil()
 	}
 	startIdx := p.pos
 	lt := p.advance()
-	node := p.storeNode(Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia})
+	node := p.sink.Store(Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia})
 	for !p.at(token.Gt) {
 		if p.curKind() != token.Identifier && !isKeywordToken(p.curKind()) {
 			p.pos = startIdx
 			return p.rawStateSelector()
 		}
-		p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
+		p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, p.advance()))
 		if p.at(token.Comma) {
 			p.advance()
 			continue
@@ -26,19 +26,19 @@ func (p *parser) parseStateSelector() *Node {
 		return p.rawStateSelector()
 	}
 	gt := p.advance()
-	node.End = gt.End.Offset
-	node.Trailing = gt.TrailingTrivia
+	p.sink.SetEnd(node, gt.End.Offset)
+	p.sink.SetTrailing(node, gt.TrailingTrivia)
 	return node
 }
 
-func (p *parser) rawStateSelector() *Node {
+func (p *parser[N, S]) rawStateSelector() N {
 	stateStart := p.pos
 	p.skipAngleStateSelector()
 	n := p.directiveSpan(KindStateSelector, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset, nil, nil)
 	return n
 }
 
-func (p *parser) skipAngleStateSelector() {
+func (p *parser[N, S]) skipAngleStateSelector() {
 	depth := 0
 	for !p.atEnd() {
 		switch p.curKind() {
@@ -59,37 +59,38 @@ func (p *parser) skipAngleStateSelector() {
 	}
 }
 
-func (p *parser) parseOptionalTagPrefix() *Node {
+func (p *parser[N, S]) parseOptionalTagPrefix() N {
 	if p.qualifiedTagPrefixStart() {
 		name := p.parseQualifiedIdentifier()
-		p.rememberTag(name.Text(p.source))
+		start, end := clampRange(p.source, p.sink.Start(name), p.sink.End(name))
+		p.rememberTag(string(p.source[start:end]))
 		colon := p.advance()
-		node := p.storeNode(Node{Kind: KindTaggedType, Start: name.Start, End: colon.End.Offset, Leading: name.Leading, Trailing: colon.TrailingTrivia})
-		p.addChild(node, name)
-		node.End = colon.End.Offset
-		node.Trailing = colon.TrailingTrivia
+		node := p.sink.Store(Node{Kind: KindTaggedType, Start: p.sink.Start(name), End: colon.End.Offset, Leading: p.sink.Leading(name), Trailing: colon.TrailingTrivia})
+		p.sink.AddChild(node, name)
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		return node
 	}
 	if p.curKind() == token.Identifier && p.peekKind(1) == token.Colon {
 		tagTok := p.advance()
 		p.rememberTag(tagTok.Text(p.source))
 		colon := p.advance()
-		node := p.storeNode(Node{Kind: KindTaggedType, Start: tagTok.Start.Offset, Leading: tagTok.LeadingTrivia})
-		p.addChild(node, p.newLeaf(KindIdentifier, tagTok))
-		node.End = colon.End.Offset
-		node.Trailing = colon.TrailingTrivia
+		node := p.sink.Store(Node{Kind: KindTaggedType, Start: tagTok.Start.Offset, Leading: tagTok.LeadingTrivia})
+		p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, tagTok))
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		return node
 	}
 	if p.curKind() == token.LBrace {
 		saved := p.pos
 		lb := p.advance()
-		node := p.storeNode(Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
+		node := p.sink.Store(Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		for {
 			if !p.at(token.Identifier) {
 				p.pos = saved
-				return nil
+				return p.sink.Nil()
 			}
-			p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
+			p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, p.advance()))
 			if p.at(token.Comma) {
 				p.advance()
 				continue
@@ -98,22 +99,22 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		}
 		if !p.at(token.RBrace) {
 			p.pos = saved
-			return nil
+			return p.sink.Nil()
 		}
 		p.advance()
 		if !p.at(token.Colon) {
 			p.pos = saved
-			return nil
+			return p.sink.Nil()
 		}
 		colon := p.advance()
-		node.End = colon.End.Offset
-		node.Trailing = colon.TrailingTrivia
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		return node
 	}
-	return nil
+	return p.sink.Nil()
 }
 
-func (p *parser) qualifiedTagPrefixStart() bool {
+func (p *parser[N, S]) qualifiedTagPrefixStart() bool {
 	if !p.at(token.Identifier) || p.peekKind(1) != token.ColonColon {
 		return false
 	}
@@ -124,50 +125,50 @@ func (p *parser) qualifiedTagPrefixStart() bool {
 	return p.peekKind(i) == token.Colon
 }
 
-func (p *parser) parseQualifiedIdentifier() *Node {
-	name := p.newLeaf(KindIdentifier, p.advance())
+func (p *parser[N, S]) parseQualifiedIdentifier() N {
+	name := p.sink.NewLeaf(KindIdentifier, p.advance())
 	for p.at(token.ColonColon) {
 		name = p.parseMemberSelection(name)
 	}
 	return name
 }
 
-func (p *parser) rememberTag(name string) {
+func (p *parser[N, S]) rememberTag(name string) {
 	if p.knownTags == nil {
 		p.knownTags = make(map[string]struct{})
 	}
 	p.knownTags[name] = struct{}{}
 }
 
-func (p *parser) knowsTag(name string) bool {
+func (p *parser[N, S]) knowsTag(name string) bool {
 	_, ok := p.knownTags[name]
 	return ok
 }
 
-func (p *parser) parseDimensions() []*Node {
-	var dims []*Node
+func (p *parser[N, S]) parseDimensions() []N {
+	var dims []N
 	for p.at(token.LBracket) {
 		lb := p.advance()
-		dim := p.storeNode(Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
+		dim := p.sink.Store(Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		if !p.at(token.RBracket) {
 			expr := p.parseExpression()
-			p.setField(dim, fieldSize, expr)
-			p.addChild(dim, expr)
+			p.sink.SetField(dim, fieldSize, expr)
+			p.sink.AddChild(dim, expr)
 		}
 		if p.at(token.Identifier) && p.cur().Text(p.source) == "char" {
-			packed := p.newLeaf(KindIdentifier, p.advance())
-			p.setField(dim, fieldPacked, packed)
-			p.addChild(dim, packed)
+			packed := p.sink.NewLeaf(KindIdentifier, p.advance())
+			p.sink.SetField(dim, fieldPacked, packed)
+			p.sink.AddChild(dim, packed)
 		}
 		if p.at(token.RBracket) {
 			rb := p.advance()
-			dim.End = rb.End.Offset
-			dim.Trailing = rb.TrailingTrivia
+			p.sink.SetEnd(dim, rb.End.Offset)
+			p.sink.SetTrailing(dim, rb.TrailingTrivia)
 		} else {
-			dim.HasError = true
+			p.sink.SetHasError(dim, true)
 			p.emitMissingToken(token.RBracket, "array dimension")
 		}
-		dims = p.appendNode(dims, dim)
+		dims = p.sink.Append(dims, dim)
 	}
 	return dims
 }

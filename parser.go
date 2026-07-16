@@ -65,7 +65,7 @@ func parseTokens(source []byte, toks []token.Token, options ParseOptions) *File 
 			End:   end,
 		})
 	}
-	p := newParser(source, toks, nil)
+	p := newPointerParser(source, toks, nil)
 	root := p.parseSourceFile()
 	p.buildDiagnosticCoverage()
 	p.ensureErrorDiagnostics(root)
@@ -76,7 +76,7 @@ func parseTokens(source []byte, toks []token.Token, options ParseOptions) *File 
 		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
 	})
 	if options.DiscardTrivia {
-		p.storage.arena.discardTrivia()
+		p.sink.storage.arena.discardTrivia()
 	}
 	toks = retainedTokens(toks, options)
 	return &File{Source: source, Tokens: toks, Root: root, Broken: p.broken, Diagnostics: p.diagnostics}
@@ -98,7 +98,7 @@ func retainedTokens(toks []token.Token, options ParseOptions) []token.Token {
 	return toks
 }
 
-type parser struct {
+type parser[N comparable, S nodeSink[N]] struct {
 	source    []byte
 	toks      []token.Token
 	pos       int
@@ -113,7 +113,7 @@ type parser struct {
 	suppressTagCast bool
 	knownTags       map[string]struct{}
 
-	storage *parserStorage
+	sink S
 
 	diagnostics []Diagnostic
 	depthError  bool
@@ -138,11 +138,14 @@ type parserStorageMark struct {
 	trivia   nodeArenaMark
 }
 
-func newParser(source []byte, toks []token.Token, storage *parserStorage) *parser {
+func newPointerParser(source []byte, toks []token.Token, storage *parserStorage) *parser[*Node, pointerNodeSink] {
 	if storage == nil {
 		storage = new(parserStorage)
 	}
-	return &parser{source: source, toks: toks, storage: storage}
+	p := &parser[*Node, pointerNodeSink]{source: source, toks: toks}
+	p.sink.storage = storage
+	p.sink.source = source
+	return p
 }
 
 func (s *parserStorage) mark() parserStorageMark {
@@ -165,7 +168,7 @@ const (
 	maxDiagnostics = 1024
 )
 
-func (p *parser) enterDepth() bool {
+func (p *parser[N, S]) enterDepth() bool {
 	p.depth++
 	if p.depth > maxParseDepth && !p.depthError {
 		p.depthError = true
@@ -179,7 +182,7 @@ func (p *parser) enterDepth() bool {
 	return p.depth <= maxParseDepth
 }
 
-func (p *parser) exitDepth() {
+func (p *parser[N, S]) exitDepth() {
 	p.depth--
 }
 
@@ -243,6 +246,7 @@ type fieldEntryArena struct {
 	next   int
 }
 
+//nolint:dupl // Typed arenas intentionally share growth rules.
 func (a *fieldEntryArena) alloc(size int) []fieldEntry {
 	if len(a.blocks) == 0 || len(a.blocks[len(a.blocks)-1])-a.next < size {
 		blockSize := 32
@@ -391,32 +395,11 @@ func (a *nodeArena) discardTrivia() {
 	}
 }
 
-// allocNode allocates a zeroed node.
-func (p *parser) allocNode() *Node {
-	return p.storage.arena.alloc()
-}
-
-func (p *parser) storeNode(value Node) *Node {
-	n := p.allocNode()
-	*n = value
-	return n
-}
-
-func (p *parser) appendNode(nodes []*Node, node *Node) []*Node {
-	if len(nodes) == cap(nodes) {
-		capacity := max(4, cap(nodes)*2)
-		grown := p.storage.children.alloc(capacity)
-		copy(grown, nodes)
-		nodes = grown[:len(nodes)]
-	}
-	return append(nodes, node)
-}
-
-func (p *parser) missingSemiOK() bool {
+func (p *parser[N, S]) missingSemiOK() bool {
 	return p.at(token.RBrace) || p.allowMissingTrailingSemi && p.atEnd()
 }
 
-func (p *parser) abortIfSharedAcrossBranch() {
+func (p *parser[N, S]) abortIfSharedAcrossBranch() {
 	if p.condDepth == 0 {
 		return
 	}
@@ -429,11 +412,11 @@ func (p *parser) abortIfSharedAcrossBranch() {
 	}
 }
 
-func (p *parser) cur() token.Token {
+func (p *parser[N, S]) cur() token.Token {
 	return p.toks[p.pos]
 }
 
-func (p *parser) peek(offset int) token.Token {
+func (p *parser[N, S]) peek(offset int) token.Token {
 	idx := max(p.pos+offset, 0)
 	if idx >= len(p.toks) {
 		return p.toks[len(p.toks)-1]
@@ -441,11 +424,11 @@ func (p *parser) peek(offset int) token.Token {
 	return p.toks[idx]
 }
 
-func (p *parser) curKind() token.Kind {
+func (p *parser[N, S]) curKind() token.Kind {
 	return p.toks[p.pos].Kind
 }
 
-func (p *parser) peekKind(offset int) token.Kind {
+func (p *parser[N, S]) peekKind(offset int) token.Kind {
 	idx := max(p.pos+offset, 0)
 	if idx >= len(p.toks) {
 		return p.toks[len(p.toks)-1].Kind
@@ -453,15 +436,15 @@ func (p *parser) peekKind(offset int) token.Kind {
 	return p.toks[idx].Kind
 }
 
-func (p *parser) at(k token.Kind) bool {
+func (p *parser[N, S]) at(k token.Kind) bool {
 	return p.curKind() == k
 }
 
-func (p *parser) atEnd() bool {
+func (p *parser[N, S]) atEnd() bool {
 	return p.curKind() == token.EOF
 }
 
-func (p *parser) advance() token.Token {
+func (p *parser[N, S]) advance() token.Token {
 	t := p.cur()
 	if p.pos < len(p.toks)-1 {
 		p.pos++
@@ -477,7 +460,7 @@ func suggestedRecovery(r ByteRange) Recovery {
 	return Recovery{Kind: RecoveryNone, Range: r, Confidence: RecoverySuggested}
 }
 
-func (p *parser) emitDiagnostic(d Diagnostic) {
+func (p *parser[N, S]) emitDiagnostic(d Diagnostic) {
 	if len(p.diagnostics) >= maxDiagnostics {
 		return
 	}
@@ -485,28 +468,28 @@ func (p *parser) emitDiagnostic(d Diagnostic) {
 	p.diagnostics = append(p.diagnostics, d)
 }
 
-func (p *parser) ensureErrorDiagnostics(root *Node) {
-	var visit func(*Node) bool
-	visit = func(node *Node) bool {
-		if node == nil || !node.HasError {
+func (p *parser[N, S]) ensureErrorDiagnostics(root N) {
+	var visit func(N) bool
+	visit = func(node N) bool {
+		if node == p.sink.Nil() || !p.sink.HasError(node) {
 			return false
 		}
 		childHasError := false
-		for _, child := range node.Children {
+		for _, child := range p.sink.Children(node) {
 			if visit(child) {
 				childHasError = true
 			}
 		}
 		if !childHasError && !p.diagnosticCovers(node) {
-			found := p.tokenAtOffset(node.Start)
-			message := node.ErrorMessage
+			found := p.tokenAtOffset(p.sink.Start(node))
+			message := p.sink.ErrorMessage(node)
 			if message == "" {
-				message = "syntax error in " + node.Kind.String()
+				message = "syntax error in " + p.sink.Kind(node).String()
 			}
 			r := tokenRange(found)
 			p.emitDiagnostic(Diagnostic{
 				Code: DiagnosticSyntaxError, Message: message,
-				Range: r, Found: found, Expected: node.ErrorExpected, Recovery: suggestedRecovery(r),
+				Range: r, Found: found, Expected: p.sink.ErrorExpected(node), Recovery: suggestedRecovery(r),
 			})
 		}
 		return true
@@ -514,15 +497,16 @@ func (p *parser) ensureErrorDiagnostics(root *Node) {
 	visit(root)
 }
 
-func (p *parser) diagnosticCovers(node *Node) bool {
-	point := sort.SearchInts(p.diagnosticPoints, node.Start)
-	if point < len(p.diagnosticPoints) && p.diagnosticPoints[point] <= node.End {
+func (p *parser[N, S]) diagnosticCovers(node N) bool {
+	start, end := p.sink.Start(node), p.sink.End(node)
+	point := sort.SearchInts(p.diagnosticPoints, start)
+	if point < len(p.diagnosticPoints) && p.diagnosticPoints[point] <= end {
 		return true
 	}
 	rangeEnd := sort.Search(len(p.diagnosticRanges), func(i int) bool {
-		return p.diagnosticRanges[i].start >= node.End
+		return p.diagnosticRanges[i].start >= end
 	})
-	return rangeEnd > 0 && p.diagnosticRanges[rangeEnd-1].maxEnd > node.Start
+	return rangeEnd > 0 && p.diagnosticRanges[rangeEnd-1].maxEnd > start
 }
 
 type diagnosticRange struct {
@@ -531,7 +515,7 @@ type diagnosticRange struct {
 	maxEnd int
 }
 
-func (p *parser) buildDiagnosticCoverage() {
+func (p *parser[N, S]) buildDiagnosticCoverage() {
 	for _, diagnostic := range p.diagnostics {
 		if diagnostic.Range.Start == diagnostic.Range.End {
 			p.diagnosticPoints = append(p.diagnosticPoints, diagnostic.Range.Start)
@@ -553,7 +537,7 @@ func (p *parser) buildDiagnosticCoverage() {
 	}
 }
 
-func (p *parser) tokenAtOffset(offset int) token.Token {
+func (p *parser[N, S]) tokenAtOffset(offset int) token.Token {
 	idx := sort.Search(len(p.toks), func(i int) bool {
 		return p.toks[i].End.Offset >= offset
 	})
@@ -563,7 +547,7 @@ func (p *parser) tokenAtOffset(offset int) token.Token {
 	return p.toks[len(p.toks)-1]
 }
 
-func (p *parser) emitMissingToken(expected token.Kind, context string) {
+func (p *parser[N, S]) emitMissingToken(expected token.Kind, context string) {
 	found := p.cur()
 	message := "expected " + strconv.Quote(expected.String())
 	if context != "" {
@@ -581,7 +565,7 @@ func (p *parser) emitMissingToken(expected token.Kind, context string) {
 	})
 }
 
-func (p *parser) emitMissing(code DiagnosticCode, message string, expected ...token.Kind) {
+func (p *parser[N, S]) emitMissing(code DiagnosticCode, message string, expected ...token.Kind) {
 	found := p.cur()
 	r := ByteRange{Start: found.Start.Offset, End: found.Start.Offset}
 	p.emitDiagnostic(Diagnostic{
@@ -590,7 +574,7 @@ func (p *parser) emitMissing(code DiagnosticCode, message string, expected ...to
 	})
 }
 
-func (p *parser) makeRecoveryNode(start, end int, found token.Token, grammar itemGrammar, exactRemove bool) *Node {
+func (p *parser[N, S]) makeRecoveryNode(start, end int, found token.Token, grammar itemGrammar[N, S], exactRemove bool) N {
 	n := p.recoveryNode(start, end, found, grammar.recoveryContext, grammar.recoveryExpected)
 	foundRange := tokenRange(found)
 	code := DiagnosticUnexpectedToken
@@ -599,7 +583,7 @@ func (p *parser) makeRecoveryNode(start, end int, found token.Token, grammar ite
 		code = DiagnosticUnexpectedDelimiter
 		recovery = Recovery{Kind: RecoveryRemove, Range: foundRange, Confidence: RecoveryExact}
 	}
-	message := n.ErrorMessage
+	message := p.sink.ErrorMessage(n)
 	if message == "" {
 		message = "unexpected " + strconv.Quote(found.Kind.String())
 	}
@@ -610,7 +594,7 @@ func (p *parser) makeRecoveryNode(start, end int, found token.Token, grammar ite
 	return n
 }
 
-func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
+func (p *parser[N, S]) recoverStuckItem(grammar itemGrammar[N, S]) N {
 	start := p.cur().Start.Offset
 	startIdx := p.pos
 	found := p.cur()
@@ -667,12 +651,12 @@ func (p *parser) recoverStuckItem(grammar itemGrammar) *Node {
 			Message: "parser could not recover before end of file",
 			Range:   tokenRange(found), Found: found, Recovery: suggestedRecovery(tokenRange(found)),
 		})
-		return nil
+		return p.sink.Nil()
 	}
 	return p.makeRecoveryNode(start, p.toks[len(p.toks)-1].End.Offset, found, grammar, false)
 }
 
-func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
+func (p *parser[N, S]) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool, int) {
 	switch p.peekDirectiveKeyword() {
 	case dirIf:
 		live = append(live, true)
@@ -694,7 +678,7 @@ func (p *parser) updateRecoveryLiveness(live []bool, liveFalseCount int) ([]bool
 	return live, liveFalseCount
 }
 
-func (p *parser) stuckBoundary(start, startIdx int, found token.Token, grammar itemGrammar) *Node {
+func (p *parser[N, S]) stuckBoundary(start, startIdx int, found token.Token, grammar itemGrammar[N, S]) N {
 	if p.pos == startIdx {
 		p.broken = true
 		last := p.advance()

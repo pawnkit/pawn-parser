@@ -2,7 +2,9 @@ package parser
 
 import (
 	"math"
+	"sort"
 
+	"github.com/pawnkit/pawn-parser/lexer"
 	"github.com/pawnkit/pawn-parser/token"
 )
 
@@ -92,81 +94,37 @@ func (t *CompactTree) Field(node uint32, name string) (uint32, bool) {
 
 // ParseCompact parses source into a compact CST.
 func ParseCompact(source []byte, options ParseOptions) *CompactFile {
-	parsed := Parse(source)
-	return compactFile(parsed, options)
+	return parseTokensCompact(source, lexer.Tokenize(source), options)
 }
 
 // ParseTokensCompact parses tokens into a compact CST.
 func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions) *CompactFile {
-	parsed := ParseTokens(source, toks)
-	return compactFile(parsed, options)
+	return parseTokensCompact(source, toks, options)
 }
 
-func compactFile(parsed *File, options ParseOptions) *CompactFile {
-	tree := compactTree(parsed.Root)
-	tokens, trivia, origins, macroNames := compactTokens(parsed.Tokens, options)
+func parseTokensCompact(source []byte, toks []token.Token, options ParseOptions) *CompactFile {
+	if len(toks) == 0 || toks[len(toks)-1].Kind != token.EOF {
+		end := token.Position{Offset: len(source)}
+		toks = append(append([]token.Token(nil), toks...), token.Token{Kind: token.EOF, Start: end, End: end})
+	}
+	sink := newCompactNodeSink(len(toks))
+	p := &parser[uint32, compactNodeSink]{
+		source: source, toks: toks, sink: sink,
+	}
+	root := p.parseSourceFile()
+	p.buildDiagnosticCoverage()
+	p.ensureErrorDiagnostics(root)
+	sort.SliceStable(p.diagnostics, func(i, j int) bool {
+		if p.diagnostics[i].Range.Start != p.diagnostics[j].Range.Start {
+			return p.diagnostics[i].Range.Start < p.diagnostics[j].Range.Start
+		}
+		return p.diagnostics[i].Range.End < p.diagnostics[j].Range.End
+	})
+	tokens, trivia, origins, macroNames := compactTokens(toks, options)
 	return &CompactFile{
-		Source: parsed.Source, Tokens: tokens, Trivia: trivia,
-		Origins: origins, MacroNames: macroNames, Tree: tree,
-		Broken: parsed.Broken, Diagnostics: parsed.Diagnostics,
+		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames,
+		Tree: sink.tree(root), Broken: p.broken, Diagnostics: p.diagnostics,
 	}
-}
-
-func compactTree(root *Node) CompactTree {
-	if root == nil {
-		return CompactTree{}
-	}
-	nodeCount, childCount, fieldCount := compactCounts(root)
-	tree := CompactTree{
-		Nodes:    make([]CompactNode, 0, nodeCount),
-		Children: make([]uint32, 0, childCount),
-		Fields:   make([]CompactField, 0, fieldCount),
-	}
-	var add func(*Node) uint32
-	add = func(node *Node) uint32 {
-		index := compactUint(len(tree.Nodes))
-		tree.Nodes = append(tree.Nodes, CompactNode{
-			Kind: node.Kind, Start: compactUint(node.Start), End: compactUint(node.End),
-			TokenKind: node.Tok.Kind, TokenStart: compactUint(node.Tok.Start.Offset), TokenEnd: compactUint(node.Tok.End.Offset),
-			HasError: node.HasError, MissingSemi: node.MissingSemi,
-		})
-
-		childStart := compactUint(len(tree.Children))
-		tree.Children = append(tree.Children, make([]uint32, len(node.Children))...)
-		for i, child := range node.Children {
-			tree.Children[int(childStart)+i] = add(child)
-		}
-
-		fieldStart := compactUint(len(tree.Fields))
-		if node.fieldData != nil {
-			appendField := func(field fieldEntry) {
-				for childOffset, child := range node.Children {
-					if child == field.node {
-						tree.Fields = append(tree.Fields, CompactField{
-							ID: field.id, Node: tree.Children[int(childStart)+childOffset],
-						})
-						return
-					}
-				}
-			}
-			inlineCount := min(node.fieldData.count, len(node.fieldData.inline))
-			for _, field := range node.fieldData.inline[:inlineCount] {
-				appendField(field)
-			}
-			for _, field := range node.fieldData.spill {
-				appendField(field)
-			}
-		}
-
-		record := &tree.Nodes[index]
-		record.ChildStart = childStart
-		record.ChildCount = compactUint(len(node.Children))
-		record.FieldStart = fieldStart
-		record.FieldCount = compactUint(len(tree.Fields)) - fieldStart
-		return index
-	}
-	tree.Root = add(root)
-	return tree
 }
 
 // CompactToken stores one token.
@@ -283,19 +241,4 @@ func compactUint(value int) uint32 {
 		panic("compact syntax exceeds uint32")
 	}
 	return uint32(value) // #nosec G115 -- Bounds checked above.
-}
-
-func compactCounts(node *Node) (nodes, children, fields int) {
-	nodes = 1
-	children = len(node.Children)
-	if node.fieldData != nil {
-		fields = node.fieldData.count
-	}
-	for _, child := range node.Children {
-		childNodes, childChildren, childFields := compactCounts(child)
-		nodes += childNodes
-		children += childChildren
-		fields += childFields
-	}
-	return nodes, children, fields
 }

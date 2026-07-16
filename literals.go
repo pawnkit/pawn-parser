@@ -2,19 +2,19 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parsePrimary() *Node {
+func (p *parser[N, S]) parsePrimary() N {
 	tok := p.cur()
 	if isKeywordToken(tok.Kind) && p.peekKind(1) == token.LParen {
 		p.advance()
-		return p.newLeaf(KindIdentifier, tok)
+		return p.sink.NewLeaf(KindIdentifier, tok)
 	}
 	switch tok.Kind {
 	case token.Identifier, token.MacroParam:
 		p.advance()
-		return p.newLeaf(KindIdentifier, tok)
+		return p.sink.NewLeaf(KindIdentifier, tok)
 	case token.IntLiteral, token.FloatLiteral, token.CharLiteral, token.KwNull:
 		p.advance()
-		return p.newLeaf(KindLiteral, tok)
+		return p.sink.NewLeaf(KindLiteral, tok)
 	case token.StringLiteral, token.PackedString:
 		return p.parseStringConcat()
 	case token.Hash:
@@ -22,12 +22,12 @@ func (p *parser) parsePrimary() *Node {
 			return p.parseStringConcat()
 		}
 		p.advance()
-		n := p.newLeaf(KindLiteral, tok)
-		n.HasError = true
+		n := p.sink.NewLeaf(KindLiteral, tok)
+		p.sink.SetHasError(n, true)
 		return n
 	case token.Ellipsis:
 		p.advance()
-		return p.newLeaf(KindLiteral, tok)
+		return p.sink.NewLeaf(KindLiteral, tok)
 	case token.LParen:
 		return p.parseParenthesized()
 	case token.LBrace:
@@ -36,15 +36,15 @@ func (p *parser) parsePrimary() *Node {
 		if isExpressionBoundary(tok.Kind) {
 			p.emitMissing(DiagnosticMissingExpression, "expected expression",
 				token.Identifier, token.IntLiteral, token.LParen)
-			n := p.storeNode(Node{
+			n := p.sink.Store(Node{
 				Kind: KindLiteral, Tok: tok, Start: tok.Start.Offset, End: tok.Start.Offset, HasError: true,
 				Leading: tok.LeadingTrivia,
 			})
 			return n
 		}
 		p.advance()
-		n := p.newLeaf(KindLiteral, tok)
-		n.HasError = true
+		n := p.sink.NewLeaf(KindLiteral, tok)
+		p.sink.SetHasError(n, true)
 		p.emitDiagnostic(Diagnostic{
 			Code:    DiagnosticUnexpectedToken,
 			Message: "unexpected token in expression", Range: tokenRange(tok), Found: tok,
@@ -63,7 +63,7 @@ func isExpressionBoundary(kind token.Kind) bool {
 	}
 }
 
-func (p *parser) isStringPartStart() bool {
+func (p *parser[N, S]) isStringPartStart() bool {
 	if p.at(token.StringLiteral) || p.at(token.PackedString) {
 		return true
 	}
@@ -73,59 +73,59 @@ func (p *parser) isStringPartStart() bool {
 	return p.at(token.Hash) && p.peekKind(1) == token.Identifier
 }
 
-func (p *parser) parseStringPart() *Node {
+func (p *parser[N, S]) parseStringPart() N {
 	if p.at(token.Hash) {
 		return p.parseStringizeExpression()
 	}
 	tok := p.advance()
 	if tok.Kind == token.Identifier || tok.Kind == token.MacroParam || isKeywordToken(tok.Kind) {
-		return p.newLeaf(KindIdentifier, tok)
+		return p.sink.NewLeaf(KindIdentifier, tok)
 	}
-	return p.newLeaf(KindLiteral, tok)
+	return p.sink.NewLeaf(KindLiteral, tok)
 }
 
-func (p *parser) parseStringizeExpression() *Node {
+func (p *parser[N, S]) parseStringizeExpression() N {
 	hash := p.advance() // '#'
 	nameTok := p.advance()
-	name := p.newLeaf(KindIdentifier, nameTok)
-	node := p.storeNode(Node{Kind: KindStringizeExpression, Tok: hash, Start: hash.Start.Offset, End: nameTok.End.Offset, Leading: hash.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
-	p.setField(node, fieldName, name)
-	p.addChild(node, name)
+	name := p.sink.NewLeaf(KindIdentifier, nameTok)
+	node := p.sink.Store(Node{Kind: KindStringizeExpression, Tok: hash, Start: hash.Start.Offset, End: nameTok.End.Offset, Leading: hash.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
+	p.sink.SetField(node, fieldName, name)
+	p.sink.AddChild(node, name)
 	return node
 }
 
-func (p *parser) parseStringConcat() *Node {
+func (p *parser[N, S]) parseStringConcat() N {
 	first := p.parseStringPart()
 	if !p.isStringPartStart() {
 		return first
 	}
-	concat := p.storeNode(Node{Kind: KindStringConcat, Start: first.Start, Leading: first.Leading})
-	p.addChild(concat, first)
+	concat := p.sink.Store(Node{Kind: KindStringConcat, Start: p.sink.Start(first), Leading: p.sink.Leading(first)})
+	p.sink.AddChild(concat, first)
 	for p.isStringPartStart() {
-		p.addChild(concat, p.parseStringPart())
+		p.sink.AddChild(concat, p.parseStringPart())
 	}
 	return concat
 }
 
-func (p *parser) parseParenthesized() *Node {
+func (p *parser[N, S]) parseParenthesized() N {
 	lp := p.advance()
 	inner := p.parseExpression()
-	node := p.newNode(KindParenthesizedExpression, inner)
-	p.setField(node, fieldExpression, inner)
-	node.Start = lp.Start.Offset
-	node.Leading = lp.LeadingTrivia
+	node := p.sink.NewNode(KindParenthesizedExpression, inner)
+	p.sink.SetField(node, fieldExpression, inner)
+	p.sink.SetStart(node, lp.Start.Offset)
+	p.sink.SetLeading(node, lp.LeadingTrivia)
 	if p.at(token.RParen) {
 		rp := p.advance()
-		node.End = rp.End.Offset
-		node.Trailing = rp.TrailingTrivia
+		p.sink.SetEnd(node, rp.End.Offset)
+		p.sink.SetTrailing(node, rp.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RParen, "parenthesized expression")
 	}
 	return node
 }
 
-func (p *parser) parseArrayLiteral() *Node {
+func (p *parser[N, S]) parseArrayLiteral() N {
 	lb := p.advance() // '{'
-	return p.parseBracketedList(KindArrayLiteral, lb, token.RBrace, (*parser).parseAssignment)
+	return p.parseBracketedList(KindArrayLiteral, lb, token.RBrace, (*parser[N, S]).parseAssignment)
 }

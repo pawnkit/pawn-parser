@@ -2,7 +2,7 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) canStartUnbracedFunctionBody() bool {
+func (p *parser[N, S]) canStartUnbracedFunctionBody() bool {
 	if p.atEnd() || p.at(token.Semicolon) || p.at(token.Assign) {
 		return false
 	}
@@ -15,7 +15,7 @@ func (p *parser) canStartUnbracedFunctionBody() bool {
 	return true
 }
 
-func (p *parser) parseUnbracedFunctionBody() *Node {
+func (p *parser[N, S]) parseUnbracedFunctionBody() N {
 	if p.at(token.Hash) && p.peekDirectiveKeyword() == dirIf {
 		startPos := p.pos
 		region, ok := p.trySingleStatementConditional()
@@ -28,11 +28,11 @@ func (p *parser) parseUnbracedFunctionBody() *Node {
 	return p.parseStatement()
 }
 
-func (p *parser) trySingleStatementConditional() (node *Node, ok bool) {
+func (p *parser[N, S]) trySingleStatementConditional() (node N, ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, isAbort := r.(condAbort); isAbort {
-				node, ok = nil, false
+				node, ok = p.sink.Nil(), false
 				return
 			}
 			panic(r)
@@ -42,40 +42,40 @@ func (p *parser) trySingleStatementConditional() (node *Node, ok bool) {
 	p.condDepth++
 	defer func() { p.condDepth-- }()
 
-	region := p.storeNode(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
+	region := p.sink.Store(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		if !p.at(token.Hash) {
-			return nil, false
+			return p.sink.Nil(), false
 		}
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
-		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
-		p.setField(branch, fieldDirective, directive)
-		p.addChild(branch, directive)
-		p.addChild(region, branch)
+		branch := p.sink.Store(Node{Kind: KindConditionalBranch, Start: p.sink.Start(directive), End: p.sink.End(directive), Leading: p.sink.Leading(directive), Trailing: p.sink.Trailing(directive)})
+		p.sink.SetField(branch, fieldDirective, directive)
+		p.sink.AddChild(branch, directive)
+		p.sink.AddChild(region, branch)
 
 		if dk == dirEndif {
 			break
 		}
 		if dk != dirIf && dk != dirElseif && dk != dirElse {
-			return nil, false
+			return p.sink.Nil(), false
 		}
 
 		stmt := p.parseStatement()
-		p.addChild(branch, stmt)
-		branch.End = stmt.End
-		branch.Trailing = stmt.Trailing
+		p.sink.AddChild(branch, stmt)
+		p.sink.SetEnd(branch, p.sink.End(stmt))
+		p.sink.SetTrailing(branch, p.sink.Trailing(stmt))
 	}
-	region.End = region.Children[len(region.Children)-1].End
+	p.sink.SetEnd(region, p.sink.End(p.sink.Children(region)[len(p.sink.Children(region))-1]))
 	return region, true
 }
 
-func (p *parser) parseFunctionLike(quals []*Node) *Node {
+func (p *parser[N, S]) parseFunctionLike(quals []N) N {
 	start := 0
 	var leading []token.Trivia
 	if len(quals) > 0 {
-		start = quals[0].Start
-		leading = quals[0].Leading
+		start = p.sink.Start(quals[0])
+		leading = p.sink.Leading(quals[0])
 	} else {
 		start = p.cur().Start.Offset
 		leading = p.cur().LeadingTrivia
@@ -85,7 +85,7 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	callingConvention := p.parseDimensions()
 	name := p.parseFunctionName()
 	nameDimensions := p.parseDimensions()
-	var generic *Node
+	var generic N
 	if p.at(token.Lt) {
 		generic = p.parseStateSelector()
 	}
@@ -95,7 +95,7 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 	stateSel := p.parseStateSelector()
 
 	kind := KindFunctionDeclaration
-	var body *Node
+	var body N
 	switch {
 	case p.at(token.LBrace):
 		kind = KindFunctionDefinition
@@ -105,64 +105,64 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 		body = p.parseUnbracedFunctionBody()
 	}
 
-	node := p.storeNode(Node{Kind: kind, Start: start, Leading: leading})
+	node := p.sink.Store(Node{Kind: kind, Start: start, Leading: leading})
 	for _, q := range quals {
-		p.addChild(node, q)
+		p.sink.AddChild(node, q)
 	}
-	p.setField(node, fieldStorage, firstOrNil(quals))
-	if tag != nil {
-		p.setField(node, fieldTag, tag)
-		p.addChild(node, tag)
+	p.sink.SetField(node, fieldStorage, p.firstOrNil(quals))
+	if tag != p.sink.Nil() {
+		p.sink.SetField(node, fieldTag, tag)
+		p.sink.AddChild(node, tag)
 	}
 	for _, dimension := range callingConvention {
-		p.addChild(node, dimension)
+		p.sink.AddChild(node, dimension)
 	}
-	p.setField(node, fieldCallingConvention, firstOrNil(callingConvention))
-	p.setField(node, fieldName, name)
-	p.addChild(node, name)
+	p.sink.SetField(node, fieldCallingConvention, p.firstOrNil(callingConvention))
+	p.sink.SetField(node, fieldName, name)
+	p.sink.AddChild(node, name)
 	for _, dimension := range nameDimensions {
-		p.addChild(node, dimension)
+		p.sink.AddChild(node, dimension)
 	}
-	p.setField(node, fieldDimensions, firstOrNil(nameDimensions))
-	if generic != nil {
-		p.setField(node, fieldGeneric, generic)
-		p.addChild(node, generic)
+	p.sink.SetField(node, fieldDimensions, p.firstOrNil(nameDimensions))
+	if generic != p.sink.Nil() {
+		p.sink.SetField(node, fieldGeneric, generic)
+		p.sink.AddChild(node, generic)
 	}
-	p.setField(node, fieldParameters, params)
-	p.addChild(node, params)
-	if stateSel != nil {
-		p.setField(node, fieldState, stateSel)
-		p.addChild(node, stateSel)
+	p.sink.SetField(node, fieldParameters, params)
+	p.sink.AddChild(node, params)
+	if stateSel != p.sink.Nil() {
+		p.sink.SetField(node, fieldState, stateSel)
+		p.sink.AddChild(node, stateSel)
 	}
 
-	if body != nil {
-		p.setField(node, fieldBody, body)
-		p.addChild(node, body)
+	if body != p.sink.Nil() {
+		p.sink.SetField(node, fieldBody, body)
+		p.sink.AddChild(node, body)
 		return node
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		alias := p.parseAssignment()
-		p.setField(node, fieldAlias, alias)
-		p.addChild(node, alias)
-		node.End = alias.End
-		node.Trailing = alias.Trailing
+		p.sink.SetField(node, fieldAlias, alias)
+		p.sink.AddChild(node, alias)
+		p.sink.SetEnd(node, p.sink.End(alias))
+		p.sink.SetTrailing(node, p.sink.Trailing(alias))
 	}
 
 	if p.at(token.Semicolon) {
 		semi := p.advance()
-		node.End = semi.End.Offset
-		node.Trailing = semi.TrailingTrivia
+		p.sink.SetEnd(node, semi.End.Offset)
+		p.sink.SetTrailing(node, semi.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 	return node
 }
 
-func firstOrNil(nodes []*Node) *Node {
+func (p *parser[N, S]) firstOrNil(nodes []N) N {
 	if len(nodes) == 0 {
-		return nil
+		return p.sink.Nil()
 	}
 	return nodes[0]
 }

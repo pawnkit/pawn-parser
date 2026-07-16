@@ -111,12 +111,12 @@ func (n *Node) OperatorTokenHasComment() bool {
 	return false
 }
 
-func (p *parser) setField(n *Node, id FieldID, child *Node) {
+func setPointerField(storage *parserStorage, n *Node, id FieldID, child *Node) {
 	if child == nil {
 		return
 	}
 	if n.fieldData == nil {
-		n.fieldData = p.storage.fields.alloc()
+		n.fieldData = storage.fields.alloc()
 	}
 	entry := fieldEntry{id, child}
 	if n.fieldData.count < len(n.fieldData.inline) {
@@ -124,7 +124,7 @@ func (p *parser) setField(n *Node, id FieldID, child *Node) {
 	} else {
 		if len(n.fieldData.spill) == cap(n.fieldData.spill) {
 			capacity := max(2, cap(n.fieldData.spill)*2)
-			spill := p.storage.entries.alloc(capacity)
+			spill := storage.entries.alloc(capacity)
 			copy(spill, n.fieldData.spill)
 			n.fieldData.spill = spill[:len(n.fieldData.spill)]
 		}
@@ -133,8 +133,8 @@ func (p *parser) setField(n *Node, id FieldID, child *Node) {
 	n.fieldData.count++
 }
 
-func (p *parser) newLeaf(kind Kind, tok token.Token) *Node {
-	n := p.allocNode()
+func newPointerLeaf(storage *parserStorage, kind Kind, tok token.Token) *Node {
+	n := storage.arena.alloc()
 	n.Kind = kind
 	n.Tok = tok
 	n.Start = tok.Start.Offset
@@ -144,8 +144,8 @@ func (p *parser) newLeaf(kind Kind, tok token.Token) *Node {
 	return n
 }
 
-func (p *parser) newNode(kind Kind, children ...*Node) *Node {
-	n := p.allocNode()
+func newPointerNode(storage *parserStorage, kind Kind, children ...*Node) *Node {
+	n := storage.arena.alloc()
 	n.Kind = kind
 	count := 0
 	for _, c := range children {
@@ -154,7 +154,7 @@ func (p *parser) newNode(kind Kind, children ...*Node) *Node {
 		}
 	}
 	if count != 0 {
-		n.Children = p.storage.children.alloc(count)[:0]
+		n.Children = storage.children.alloc(count)[:0]
 		for _, c := range children {
 			if c != nil {
 				n.Children = append(n.Children, c)
@@ -181,13 +181,13 @@ func (n *Node) recalc() {
 	}
 }
 
-func (p *parser) addChild(n, c *Node) {
+func addPointerChild(storage *parserStorage, n, c *Node) {
 	if c == nil {
 		return
 	}
 	if len(n.Children) == cap(n.Children) {
 		capacity := max(4, cap(n.Children)*2)
-		children := p.storage.children.alloc(capacity)
+		children := storage.children.alloc(capacity)
 		copy(children, n.Children)
 		n.Children = children[:len(n.Children)]
 	}
@@ -212,31 +212,32 @@ func clampRange(source []byte, start, end int) (int, int) {
 	return start, end
 }
 
-func (p *parser) recoveryNode(start, end int, found token.Token, context string, expected []token.Kind) *Node {
+func (p *parser[N, S]) recoveryNode(start, end int, found token.Token, context string, expected []token.Kind) N {
 	start, end = clampRange(p.source, start, end)
-	n := p.storeNode(Node{Kind: KindRaw, Start: start, End: end, HasError: true, Raw: p.source[start:end]})
-	n.ErrorOffset = found.Start.Offset
-	n.ErrorFound = found.Kind
-	n.ErrorExpected = append([]token.Kind(nil), expected...)
+	n := p.sink.Store(Node{Kind: KindRaw, Start: start, End: end, HasError: true, Raw: p.source[start:end]})
+	p.sink.SetErrorOffset(n, found.Start.Offset)
+	p.sink.SetErrorFound(n, found.Kind)
+	p.sink.SetErrorExpected(n, append([]token.Kind(nil), expected...))
 	foundText := strconv.Quote(found.Text(p.source))
 	if found.Kind == token.EOF {
 		foundText = "end of file"
 	}
-	n.ErrorMessage = "unexpected " + foundText
+	message := "unexpected " + foundText
 	if context != "" {
-		n.ErrorMessage += " while parsing " + context
+		message += " while parsing " + context
 	}
 	if len(expected) > 0 {
 		formatted := make([]string, len(expected))
 		for i, kind := range expected {
 			formatted[i] = strconv.Quote(kind.String())
 		}
-		n.ErrorMessage += "; expected " + strings.Join(formatted, " or ")
+		message += "; expected " + strings.Join(formatted, " or ")
 	}
+	p.sink.SetErrorMessage(n, message)
 	return n
 }
 
-func (p *parser) directiveSpan(kind Kind, start, end int, leading, trailing []token.Trivia) *Node {
+func (p *parser[N, S]) directiveSpan(kind Kind, start, end int, leading, trailing []token.Trivia) N {
 	start, end = clampRange(p.source, start, end)
-	return p.storeNode(Node{Kind: kind, Start: start, End: end, Raw: p.source[start:end], Leading: leading, Trailing: trailing})
+	return p.sink.Store(Node{Kind: kind, Start: start, End: end, Raw: p.source[start:end], Leading: leading, Trailing: trailing})
 }

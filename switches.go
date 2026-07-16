@@ -2,111 +2,111 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseSwitchStatement() *Node {
+func (p *parser[N, S]) parseSwitchStatement() N {
 	kw := p.advance()
 	condition := p.parseParenCondition()
-	node := p.storeNode(Node{Kind: KindSwitchStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-	p.setField(node, fieldCondition, condition)
-	p.addChild(node, condition)
+	node := p.sink.Store(Node{Kind: KindSwitchStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+	p.sink.SetField(node, fieldCondition, condition)
+	p.sink.AddChild(node, condition)
 
 	if !p.at(token.LBrace) {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		return node
 	}
 	p.advance() // '{'
-	clauses := p.parseItemSequence(itemGrammar{
-		parseItem: func(p *parser) *Node { return p.parseSwitchClause() },
-		stop: func(p *parser) bool {
+	clauses := p.parseItemSequence(itemGrammar[N, S]{
+		parseItem: func(p *parser[N, S]) N { return p.parseSwitchClause() },
+		stop: func(p *parser[N, S]) bool {
 			p.abortIfSharedAcrossBranch()
 			return p.at(token.RBrace)
 		},
 	})
 	for _, c := range clauses {
-		p.addChild(node, c)
+		p.sink.AddChild(node, c)
 	}
 	if p.at(token.RBrace) {
 		rb := p.advance()
-		node.End = rb.End.Offset
-		node.Trailing = rb.TrailingTrivia
+		p.sink.SetEnd(node, rb.End.Offset)
+		p.sink.SetTrailing(node, rb.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 	}
 	return node
 }
 
-func (p *parser) parseSwitchClause() *Node {
+func (p *parser[N, S]) parseSwitchClause() N {
 	if p.at(token.KwCase) {
 		kw := p.advance()
 		wasSuppressed := p.suppressTagCast
 		p.suppressTagCast = true
 		values := p.parseCaseValueList()
 		p.suppressTagCast = wasSuppressed
-		node := p.storeNode(Node{Kind: KindCaseClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
-		p.setField(node, fieldValues, values)
-		p.addChild(node, values)
+		node := p.sink.Store(Node{Kind: KindCaseClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+		p.sink.SetField(node, fieldValues, values)
+		p.sink.AddChild(node, values)
 		if p.at(token.Colon) {
 			p.advance()
 		} else {
-			node.HasError = true
+			p.sink.SetHasError(node, true)
 		}
 		body := p.parseClauseBody()
-		p.setField(node, fieldBody, body)
-		p.addChild(node, body)
+		p.sink.SetField(node, fieldBody, body)
+		p.sink.AddChild(node, body)
 		return node
 	}
 	if p.at(token.KwDefault) {
 		kw := p.advance()
-		node := p.storeNode(Node{Kind: KindDefaultClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+		node := p.sink.Store(Node{Kind: KindDefaultClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
 		if p.at(token.Colon) {
 			p.advance()
 		} else {
-			node.HasError = true
+			p.sink.SetHasError(node, true)
 		}
 		body := p.parseClauseBody()
-		p.setField(node, fieldBody, body)
-		p.addChild(node, body)
+		p.sink.SetField(node, fieldBody, body)
+		p.sink.AddChild(node, body)
 		return node
 	}
 	tok := p.advance()
-	n := p.newLeaf(KindRaw, tok)
-	n.HasError = true
+	n := p.sink.NewLeaf(KindRaw, tok)
+	p.sink.SetHasError(n, true)
 	return n
 }
 
-func (p *parser) parseClauseBody() *Node {
+func (p *parser[N, S]) parseClauseBody() N {
 	if p.at(token.LBrace) {
 		return p.parseBlock()
 	}
 	if p.at(token.KwCase) || p.at(token.KwDefault) || p.at(token.RBrace) {
 		tok := p.cur()
-		return p.storeNode(Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, Leading: tok.LeadingTrivia})
+		return p.sink.Store(Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, Leading: tok.LeadingTrivia})
 	}
 	return p.parseStatement()
 }
 
-func (p *parser) parseCaseValueList() *Node {
-	list := p.storeNode(Node{Kind: KindCaseValueList, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
+func (p *parser[N, S]) parseCaseValueList() N {
+	list := p.sink.Store(Node{Kind: KindCaseValueList, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		v := p.parseCaseValue()
 		if p.at(token.Comma) {
 			p.mergeCommaTrivia(v, p.advance())
-			p.addChild(list, v)
+			p.sink.AddChild(list, v)
 			continue
 		}
-		p.addChild(list, v)
+		p.sink.AddChild(list, v)
 		break
 	}
 	return list
 }
 
-func (p *parser) parseCaseValue() *Node {
+func (p *parser[N, S]) parseCaseValue() N {
 	start := p.parseTernary()
 	if p.at(token.DotDot) {
 		p.advance()
 		end := p.parseTernary()
-		node := p.newNode(KindCaseRange, start, end)
-		p.setField(node, fieldStart, start)
-		p.setField(node, fieldEnd, end)
+		node := p.sink.NewNode(KindCaseRange, start, end)
+		p.sink.SetField(node, fieldStart, start)
+		p.sink.SetField(node, fieldEnd, end)
 		return node
 	}
 	return start

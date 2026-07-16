@@ -2,7 +2,7 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseDefineDirective(startOffset int) *Node {
+func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 	leading := p.cur().LeadingTrivia
 	p.advance() // '#'
 	p.advance() // 'define'
@@ -11,9 +11,9 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 		return p.consumeRawDirectiveLineFrom(startOffset, KindDirectiveDefine, leading)
 	}
 	nameTok := p.advance()
-	nameNode := p.newLeaf(KindIdentifier, nameTok)
+	nameNode := p.sink.NewLeaf(KindIdentifier, nameTok)
 
-	var params *Node
+	var params N
 	if p.at(token.LParen) && len(nameTok.TrailingTrivia) == 0 {
 		if pl, ok := p.parseMacroParamList(); ok {
 			params = pl
@@ -21,12 +21,12 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 	}
 
 	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
-		node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: nameNode.End, Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia})
-		p.setField(node, fieldName, nameNode)
-		p.addChild(node, nameNode)
-		if params != nil {
-			p.setField(node, fieldParameters, params)
-			p.addChild(node, params)
+		node := p.sink.Store(Node{Kind: KindDirectiveDefine, Start: startOffset, End: p.sink.End(nameNode), Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia})
+		p.sink.SetField(node, fieldName, nameNode)
+		p.sink.AddChild(node, nameNode)
+		if params != p.sink.Nil() {
+			p.sink.SetField(node, fieldParameters, params)
+			p.sink.AddChild(node, params)
 		}
 		return node
 	}
@@ -45,19 +45,19 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 
 	valueNode := p.parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd)
 
-	node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia})
-	p.setField(node, fieldName, nameNode)
-	p.addChild(node, nameNode)
-	if params != nil {
-		p.setField(node, fieldParameters, params)
-		p.addChild(node, params)
+	node := p.sink.Store(Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia})
+	p.sink.SetField(node, fieldName, nameNode)
+	p.sink.AddChild(node, nameNode)
+	if params != p.sink.Nil() {
+		p.sink.SetField(node, fieldParameters, params)
+		p.sink.AddChild(node, params)
 	}
-	p.setField(node, fieldValue, valueNode)
-	p.addChild(node, valueNode)
+	p.sink.SetField(node, fieldValue, valueNode)
+	p.sink.AddChild(node, valueNode)
 	return node
 }
 
-func (p *parser) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading []token.Trivia) *Node {
+func (p *parser[N, S]) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading []token.Trivia) N {
 	var last token.Token
 	for !p.atEnd() {
 		last = p.advance()
@@ -67,29 +67,29 @@ func (p *parser) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading
 	}
 	end := max(last.End.Offset, startOffset)
 	n := p.directiveSpan(kind, startOffset, end, leading, last.TrailingTrivia)
-	n.HasError = true
+	p.sink.SetHasError(n, true)
 	return n
 }
 
-func (p *parser) parseMacroParamList() (*Node, bool) {
+func (p *parser[N, S]) parseMacroParamList() (N, bool) {
 	startIdx := p.pos
 	lp := p.advance() // '('
-	params := p.storeNode(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
+	params := p.sink.Store(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 
 	if p.at(token.RParen) {
 		rp := p.advance()
-		params.End = rp.End.Offset
-		params.Trailing = rp.TrailingTrivia
+		p.sink.SetEnd(params, rp.End.Offset)
+		p.sink.SetTrailing(params, rp.TrailingTrivia)
 		return params, true
 	}
 
 	for {
 		if !p.at(token.MacroParam) && !p.at(token.Identifier) {
 			p.pos = startIdx
-			return nil, false
+			return p.sink.Nil(), false
 		}
 		tok := p.advance()
-		p.addChild(params, p.newLeaf(KindIdentifier, tok))
+		p.sink.AddChild(params, p.sink.NewLeaf(KindIdentifier, tok))
 
 		if p.at(token.Comma) {
 			p.advance()
@@ -97,17 +97,17 @@ func (p *parser) parseMacroParamList() (*Node, bool) {
 		}
 		if p.at(token.RParen) {
 			rp := p.advance()
-			params.End = rp.End.Offset
-			params.Trailing = rp.TrailingTrivia
+			p.sink.SetEnd(params, rp.End.Offset)
+			p.sink.SetTrailing(params, rp.TrailingTrivia)
 			return params, true
 		}
 		p.pos = startIdx
-		return nil, false
+		return p.sink.Nil(), false
 	}
 }
 
-func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int) *Node {
-	raw := func() *Node {
+func (p *parser[N, S]) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int) N {
+	raw := func() N {
 		return p.directiveSpan(KindMacroBody, bodyStart, bodyEnd, nil, nil)
 	}
 	if bodyStartIdx >= bodyEndIdx {
@@ -119,11 +119,11 @@ func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int
 	last := bodyToks[len(bodyToks)-1]
 	bodyToks = append(bodyToks, token.Token{Kind: token.EOF, Start: last.End, End: last.End})
 
-	if expr, ok := p.tryParseAll(bodyToks, false, (*parser).parseExpression); ok {
+	if expr, ok := p.tryParseAll(bodyToks, false, (*parser[N, S]).parseExpression); ok {
 		return expr
 	}
-	if stmt, ok := p.tryParseAll(bodyToks, true, (*parser).parseStatement); ok {
-		if childrenHaveMissingSemicolon(stmt) {
+	if stmt, ok := p.tryParseAll(bodyToks, true, (*parser[N, S]).parseStatement); ok {
+		if p.childrenHaveMissingSemicolon(stmt) {
 			return raw()
 		}
 		return stmt
@@ -131,25 +131,25 @@ func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int
 	return raw()
 }
 
-func childrenHaveMissingSemicolon(node *Node) bool {
-	for _, child := range node.Children {
-		if child.MissingSemi || childrenHaveMissingSemicolon(child) {
+func (p *parser[N, S]) childrenHaveMissingSemicolon(node N) bool {
+	for _, child := range p.sink.Children(node) {
+		if p.sink.MissingSemi(child) || p.childrenHaveMissingSemicolon(child) {
 			return true
 		}
 	}
 	return false
 }
 
-func (p *parser) tryParseAll(toks []token.Token, lenientTrailingSemi bool, fn func(*parser) *Node) (*Node, bool) {
-	mark := p.storage.mark()
-	sub := parser{
-		source: p.source, toks: toks, storage: p.storage,
-		allowMissingTrailingSemi: lenientTrailingSemi,
+func (p *parser[N, S]) tryParseAll(toks []token.Token, lenientTrailingSemi bool, fn func(*parser[N, S]) N) (N, bool) {
+	mark := p.sink.Mark()
+	sub := parser[N, S]{
+		source: p.source, toks: toks,
+		sink: p.sink, allowMissingTrailingSemi: lenientTrailingSemi,
 	}
 	node := fn(&sub)
-	if node == nil || node.HasError || sub.broken || !sub.atEnd() {
-		p.storage.rewind(mark)
-		return nil, false
+	if node == p.sink.Nil() || p.sink.HasError(node) || sub.broken || !sub.atEnd() {
+		p.sink.Rewind(mark)
+		return p.sink.Nil(), false
 	}
 	return node, true
 }

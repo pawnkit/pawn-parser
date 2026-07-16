@@ -1,18 +1,18 @@
 package parser
 
-func (p *parser) parseSourceFile() *Node {
-	root := p.storeNode(Node{Kind: KindSourceFile})
-	items := p.parseItemSequence(itemGrammar{
-		parseItem:       func(p *parser) *Node { return p.parseDeclaration() },
-		stop:            func(p *parser) bool { return p.atEnd() },
+func (p *parser[N, S]) parseSourceFile() N {
+	root := p.sink.Store(Node{Kind: KindSourceFile})
+	items := p.parseItemSequence(itemGrammar[N, S]{
+		parseItem:       func(p *parser[N, S]) N { return p.parseDeclaration() },
+		stop:            func(p *parser[N, S]) bool { return p.atEnd() },
 		recoveryContext: "declaration",
 	})
 	for _, it := range items {
-		p.addChild(root, it)
+		p.sink.AddChild(root, it)
 	}
 	if len(p.toks) > 0 {
-		root.End = p.toks[len(p.toks)-1].End.Offset
+		p.sink.SetEnd(root, p.toks[len(p.toks)-1].End.Offset)
 	}
-	root.Trailing = p.toks[len(p.toks)-1].LeadingTrivia
+	p.sink.SetTrailing(root, p.toks[len(p.toks)-1].LeadingTrivia)
 	return root
 }

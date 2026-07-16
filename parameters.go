@@ -2,43 +2,43 @@ package parser
 
 import "github.com/pawnkit/pawn-parser/token"
 
-func (p *parser) parseParameterList() *Node {
+func (p *parser[N, S]) parseParameterList() N {
 	if !p.at(token.LParen) {
 		p.emitMissingToken(token.LParen, "parameter list")
-		n := p.storeNode(Node{Kind: KindParameterList, HasError: true})
+		n := p.sink.Store(Node{Kind: KindParameterList, HasError: true})
 		return n
 	}
 	lp := p.advance()
-	node := p.storeNode(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
-	items := p.parseItemSequence(itemGrammar{
-		parseItem:      (*parser).parseParameter,
+	node := p.sink.Store(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
+	items := p.parseItemSequence(itemGrammar[N, S]{
+		parseItem:      (*parser[N, S]).parseParameter,
 		stopKind:       token.RParen,
 		abortAtStop:    true,
 		commaSeparated: true,
 	})
 	for _, it := range items {
-		p.addChild(node, it)
+		p.sink.AddChild(node, it)
 	}
 	if p.at(token.RParen) {
 		rp := p.advance()
-		node.End = rp.End.Offset
-		node.Trailing = rp.TrailingTrivia
+		p.sink.SetEnd(node, rp.End.Offset)
+		p.sink.SetTrailing(node, rp.TrailingTrivia)
 	} else {
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		p.emitMissingToken(token.RParen, "parameter list")
 	}
 	return node
 }
 
-func (p *parser) parseParameter() *Node {
+func (p *parser[N, S]) parseParameter() N {
 	if p.at(token.Ellipsis) {
 		tok := p.advance()
-		return p.newLeaf(KindParameter, tok)
+		return p.sink.NewLeaf(KindParameter, tok)
 	}
 
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
-	node := p.storeNode(Node{Kind: KindParameter, Start: start, Leading: leading})
+	node := p.sink.Store(Node{Kind: KindParameter, Start: start, Leading: leading})
 	p.parseParameterQualifiers(node)
 
 	if p.at(token.Amp) {
@@ -46,9 +46,9 @@ func (p *parser) parseParameter() *Node {
 	}
 
 	tag := p.parseOptionalTagPrefix()
-	if tag != nil {
-		p.setField(node, fieldTag, tag)
-		p.addChild(node, tag)
+	if tag != p.sink.Nil() {
+		p.sink.SetField(node, fieldTag, tag)
+		p.sink.AddChild(node, tag)
 	}
 
 	if p.at(token.Amp) {
@@ -57,8 +57,8 @@ func (p *parser) parseParameter() *Node {
 
 	if p.at(token.Ellipsis) {
 		tok := p.advance()
-		node.End = tok.End.Offset
-		node.Trailing = tok.TrailingTrivia
+		p.sink.SetEnd(node, tok.End.Offset)
+		p.sink.SetTrailing(node, tok.TrailingTrivia)
 		return node
 	}
 
@@ -69,53 +69,53 @@ func (p *parser) parseParameter() *Node {
 	return node
 }
 
-func (p *parser) parseParameterQualifiers(node *Node) {
+func (p *parser[N, S]) parseParameterQualifiers(node N) {
 	for p.at(token.KwConst) || p.at(token.KwStock) {
-		p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
+		p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, p.advance()))
 	}
 }
 
-func (p *parser) parseParameterName(node *Node) bool {
+func (p *parser[N, S]) parseParameterName(node N) bool {
 	if !isFunctionNameToken(p.curKind()) {
 		p.emitMissing(DiagnosticMissingIdentifier, "expected parameter name", token.Identifier)
-		node.HasError = true
+		p.sink.SetHasError(node, true)
 		if !p.atEnd() && p.curKind() != token.Comma && p.curKind() != token.RParen {
 			bad := p.advance()
-			node.End = bad.End.Offset
-			node.Trailing = bad.TrailingTrivia
+			p.sink.SetEnd(node, bad.End.Offset)
+			p.sink.SetTrailing(node, bad.TrailingTrivia)
 		}
 		return false
 	}
 	name := p.parseQualifiedIdentifier()
-	p.setField(node, fieldName, name)
-	p.addChild(node, name)
-	node.End = name.End
-	node.Trailing = name.Trailing
+	p.sink.SetField(node, fieldName, name)
+	p.sink.AddChild(node, name)
+	p.sink.SetEnd(node, p.sink.End(name))
+	p.sink.SetTrailing(node, p.sink.Trailing(name))
 	return true
 }
 
-func (p *parser) parseParameterSuffix(node *Node) {
+func (p *parser[N, S]) parseParameterSuffix(node N) {
 	dims := p.parseDimensions()
 	for _, d := range dims {
-		p.addChild(node, d)
-		node.End = d.End
-		node.Trailing = d.Trailing
+		p.sink.AddChild(node, d)
+		p.sink.SetEnd(node, p.sink.End(d))
+		p.sink.SetTrailing(node, p.sink.Trailing(d))
 	}
 	if len(dims) > 0 {
-		p.setField(node, fieldArray, dims[0])
+		p.sink.SetField(node, fieldArray, dims[0])
 	}
 	if p.at(token.Lt) {
 		generic := p.parseStateSelector()
-		p.setField(node, fieldGeneric, generic)
-		p.addChild(node, generic)
+		p.sink.SetField(node, fieldGeneric, generic)
+		p.sink.AddChild(node, generic)
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		def := p.parseAssignment()
-		p.setField(node, fieldDefaultValue, def)
-		p.addChild(node, def)
-		node.End = def.End
-		node.Trailing = def.Trailing
+		p.sink.SetField(node, fieldDefaultValue, def)
+		p.sink.AddChild(node, def)
+		p.sink.SetEnd(node, p.sink.End(def))
+		p.sink.SetTrailing(node, p.sink.Trailing(def))
 	}
 }
