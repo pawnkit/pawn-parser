@@ -165,6 +165,34 @@ func TestParseProfiles(t *testing.T) {
 	}
 }
 
+func TestCompactChildEventsInlineAndSpill(t *testing.T) {
+	t.Parallel()
+	sink := newCompactNodeSink(16, false)
+	parent := sink.New(KindArgumentList)
+	first := sink.New(KindIdentifier)
+	second := sink.New(KindLiteral)
+	third := sink.New(KindIdentifier)
+	sink.AddChild(parent, first)
+	sink.AddChild(parent, second)
+	if data := sink.childData(parent); data == nil || data.spill != 0 {
+		t.Fatal("two children did not remain inline")
+	}
+	sink.AddChild(parent, third)
+	children := sink.Children(parent)
+	if len(children) != 3 || children[0] != first || children[1] != second || children[2] != third {
+		t.Fatalf("spilled children = %v", children)
+	}
+
+	mark := sink.Mark()
+	speculative := sink.New(KindRaw)
+	sink.AddChild(speculative, sink.New(KindIdentifier))
+	sink.Rewind(mark)
+	if len(sink.builder.nodes) != mark.nodes || len(sink.builder.nodeChildren) != mark.nodeChildren ||
+		len(sink.builder.childSpills) != mark.childSpills {
+		t.Fatal("child event rewind retained speculative storage")
+	}
+}
+
 func TestParseCompactLexerRetentionMatchesTokenConversion(t *testing.T) {
 	t.Parallel()
 	source := []byte("// lead\nmain() { return value; } // tail\n")

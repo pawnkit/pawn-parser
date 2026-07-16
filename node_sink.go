@@ -51,15 +51,17 @@ type nodeSink[N comparable] interface {
 }
 
 type sinkMark struct {
-	storage    parserStorageMark
-	nodes      int
-	edgeCount  int
-	fieldCount int
-	errors     int
-	nodeTrivia int
-	children   compactArenaMark
-	fields     compactArenaMark
-	trivia     nodeArenaMark
+	storage      parserStorageMark
+	nodes        int
+	edgeCount    int
+	fieldCount   int
+	errors       int
+	nodeTrivia   int
+	nodeChildren int
+	childSpills  int
+	children     compactArenaMark
+	fields       compactArenaMark
+	trivia       nodeArenaMark
 }
 
 type pointerNodeSink struct {
