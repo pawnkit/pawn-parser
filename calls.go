@@ -187,8 +187,8 @@ func (p *parser[N, S]) parseArgumentList() N {
 
 func (p *parser[N, S]) argumentEnd(start int) int {
 	parenDepth, bracketDepth, braceDepth, angleDepth := 0, 0, 0, 0
-	for i := start; i < len(p.toks); i++ {
-		kind := p.toks[i].Kind
+	for i := start; i < p.toks.len(); i++ {
+		kind := p.toks.kind(i)
 		if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
 			(kind == token.Comma || kind == token.RParen || kind == token.EOF) {
 			return i
@@ -217,7 +217,7 @@ func (p *parser[N, S]) argumentEnd(start int) int {
 		default:
 		}
 	}
-	return len(p.toks) - 1
+	return p.toks.len() - 1
 }
 
 func (p *parser[N, S]) hasAngleClose(start int) bool {
@@ -228,10 +228,10 @@ func (p *parser[N, S]) hasAngleClose(start int) bool {
 }
 
 func (p *parser[N, S]) buildAngleClose() {
-	p.angleClose = make([]bool, len(p.toks))
+	p.angleClose = make([]bool, p.toks.len())
 	stack := make([]int, 0, 8)
-	for i := range p.toks {
-		switch p.toks[i].Kind {
+	for i := range p.toks.len() {
+		switch p.toks.kind(i) {
 		case token.Lt:
 			stack = append(stack, i)
 		case token.Gt:

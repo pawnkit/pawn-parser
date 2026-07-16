@@ -36,6 +36,13 @@ func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.Comp
 	return tokens.finishCompact(fullTrivia, retainTrivia)
 }
 
+// TokenizeCompactSyntax tokenizes src into compact tokens and shared trivia.
+func TokenizeCompactSyntax(src []byte) ([]token.CompactToken, []token.Trivia) {
+	tokens, trivia := buildTokens(src)
+	fullTrivia := trivia.finish()
+	return tokens.finishParserCompact(), fullTrivia
+}
+
 func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 	s := newScanner(src)
 	var tokens tokenBuilder
@@ -277,6 +284,28 @@ func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) (
 		releaseBuiltTokenBlock(block)
 	}
 	return tokens, compact, compactTrivia
+}
+
+func (b *tokenBuilder) finishParserCompact() []token.CompactToken {
+	tokens := make([]token.CompactToken, b.count)
+	output := 0
+	for blockIndex, block := range b.blocks {
+		data := block.data
+		if blockIndex == len(b.blocks)-1 {
+			data = data[:b.next]
+		}
+		for _, built := range data {
+			r := built.trivia
+			tokens[output] = token.CompactToken{
+				Kind: built.kind, Start: compactPosition(built.start), End: compactPosition(built.end),
+				LeadingStart: compactUint(r.leadingStart), LeadingCount: compactUint(r.trailingStart - r.leadingStart),
+				TrailingStart: compactUint(r.trailingStart), TrailingCount: compactUint(r.trailingEnd - r.trailingStart),
+			}
+			output++
+		}
+		releaseBuiltTokenBlock(block)
+	}
+	return tokens
 }
 
 func compactPosition(position token.Position) token.CompactPosition {

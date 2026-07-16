@@ -118,7 +118,8 @@ func (t *CompactTree) Field(node uint32, name string) (uint32, bool) {
 // ParseCompact parses source into a compact CST.
 func ParseCompact(source []byte, options ParseOptions) *CompactFile {
 	if options.DiscardTokens {
-		return parseTokensCompact(source, lexer.Tokenize(source), options, nil, nil)
+		toks, trivia := lexer.TokenizeCompactSyntax(source)
+		return parseCompact(source, newCompactParserTokens(toks, trivia), options, nil, nil)
 	}
 	toks, compact, trivia := lexer.TokenizeCompact(source, !options.DiscardTrivia)
 	return parseTokensCompact(source, toks, options, compact, trivia)
@@ -150,7 +151,17 @@ func parseTokensCompact(
 		end := token.Position{Offset: len(source)}
 		toks = append(append([]token.Token(nil), toks...), token.Token{Kind: token.EOF, Start: end, End: end})
 	}
-	sink := newCompactNodeSink(len(toks))
+	return parseCompact(source, newParserTokens(toks), options, retainedTokens, retainedTrivia)
+}
+
+func parseCompact(
+	source []byte,
+	toks parserTokens,
+	options ParseOptions,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+) *CompactFile {
+	sink := newCompactNodeSink(toks.len())
 	p := &parser[uint32, compactNodeSink]{
 		source: source, toks: toks, sink: sink,
 	}
@@ -166,7 +177,7 @@ func parseTokensCompact(
 	tokens, trivia := retainedTokens, retainedTrivia
 	origins, macroNames := []CompactOrigin{{}}, []string{""}
 	if tokens == nil && !options.DiscardTokens {
-		tokens, trivia, origins, macroNames = compactTokens(toks, options)
+		tokens, trivia, origins, macroNames = compactTokens(toks.full, options)
 	}
 	return &CompactFile{
 		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames,

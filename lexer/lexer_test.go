@@ -1,11 +1,40 @@
 package lexer
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/pawnkit/pawn-parser/token"
 )
+
+func TestCompactSyntaxMatchesTokens(t *testing.T) {
+	t.Parallel()
+	source := []byte("// lead\nnew value = Call(1); // tail\n")
+	want := Tokenize(source)
+	compact, trivia := TokenizeCompactSyntax(source)
+	if len(compact) != len(want) {
+		t.Fatalf("compact token count = %d, want %d", len(compact), len(want))
+	}
+	for i, item := range compact {
+		got := token.Token{
+			Kind:  item.Kind,
+			Start: token.Position{Offset: int(item.Start.Offset), Line: int(item.Start.Line), Col: int(item.Start.Col)},
+			End:   token.Position{Offset: int(item.End.Offset), Line: int(item.End.Line), Col: int(item.End.Col)},
+		}
+		leadingEnd := item.LeadingStart + item.LeadingCount
+		trailingEnd := item.TrailingStart + item.TrailingCount
+		if item.LeadingCount != 0 {
+			got.LeadingTrivia = trivia[item.LeadingStart:leadingEnd:leadingEnd]
+		}
+		if item.TrailingCount != 0 {
+			got.TrailingTrivia = trivia[item.TrailingStart:trailingEnd:trailingEnd]
+		}
+		if !reflect.DeepEqual(got, want[i]) {
+			t.Fatalf("compact token %d = %+v, want %+v", i, got, want[i])
+		}
+	}
+}
 
 func kinds(toks []token.Token) []token.Kind {
 	out := make([]token.Kind, 0, len(toks))
