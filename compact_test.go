@@ -23,6 +23,13 @@ func TestParseCompactPreservesTreeShapeAndFields(t *testing.T) {
 	if got := compactFile.Tree.Nodes[compactFile.Tree.Root].Text(source); got != string(source) {
 		t.Fatalf("compact root text = %q", got)
 	}
+	root := compactFile.Tree.Nodes[compactFile.Tree.Root]
+	if got := root.Bytes(source); string(got) != string(source) {
+		t.Fatalf("compact root bytes = %q", got)
+	}
+	if got := root.Range(); got != (ByteRange{Start: 0, End: len(source)}) {
+		t.Fatalf("compact root range = %+v", got)
+	}
 
 	pointerCount := 0
 	var count func(*Node)

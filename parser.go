@@ -120,6 +120,9 @@ type parser[N comparable, S nodeSink[N]] struct {
 
 	diagnosticRanges []diagnosticRange
 	diagnosticPoints []int
+
+	angleClose      []bool
+	angleCloseBuilt bool
 }
 
 type parserStorage struct {

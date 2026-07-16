@@ -2,6 +2,7 @@ package parser
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pawnkit/pawn-parser/lexer"
@@ -16,6 +17,27 @@ func benchmarkSource(b *testing.B) []byte {
 		b.Fatal(err)
 	}
 	return source
+}
+
+func BenchmarkParseGenericArguments(b *testing.B) {
+	var source strings.Builder
+	source.WriteString("main() { Call(")
+	for i := range 2000 {
+		if i != 0 {
+			source.WriteByte(',')
+		}
+		source.WriteString("Type<Value>")
+	}
+	source.WriteString("); }")
+	data := []byte(source.String())
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for range b.N {
+		if file := ParseForLinter(data); file.HasParseErrors() {
+			b.Fatal("generic argument source did not parse")
+		}
+	}
 }
 
 func BenchmarkParseLargeFile(b *testing.B) {

@@ -69,10 +69,20 @@ type CompactError struct {
 
 // Text returns the node's exact source text.
 func (n CompactNode) Text(source []byte) string {
+	return string(n.Bytes(source))
+}
+
+// Bytes returns the node's exact source bytes without allocating.
+func (n CompactNode) Bytes(source []byte) []byte {
 	if n.End > compactUint(len(source)) || n.Start > n.End {
-		return ""
+		return nil
 	}
-	return string(source[int(n.Start):int(n.End)])
+	return source[int(n.Start):int(n.End)]
+}
+
+// Range returns the node's half-open source byte range.
+func (n CompactNode) Range() ByteRange {
+	return ByteRange{Start: int(n.Start), End: int(n.End)}
 }
 
 // CompactField maps a field name to a node.

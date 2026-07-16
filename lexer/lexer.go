@@ -40,10 +40,17 @@ func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 	s := newScanner(src)
 	var tokens tokenBuilder
 	var trivia triviaBuilder
+	var pending rawToken
+	hasPending := false
 	leadingStart := 0
 
 	for {
-		r := s.nextRaw()
+		r := pending
+		if hasPending {
+			hasPending = false
+		} else {
+			r = s.nextRaw()
+		}
 		if r.kind.IsTrivia() {
 			trivia.append(token.Trivia{Kind: r.kind, Start: r.start, End: r.end})
 			continue
@@ -61,10 +68,10 @@ func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 		}
 
 		for {
-			save := *s
 			r2 := s.nextRaw()
 			if !r2.kind.IsTrivia() {
-				*s = save
+				pending = r2
+				hasPending = true
 				break
 			}
 			trivia.append(token.Trivia{Kind: r2.kind, Start: r2.start, End: r2.end})

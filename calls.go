@@ -221,22 +221,31 @@ func (p *parser[N, S]) argumentEnd(start int) int {
 }
 
 func (p *parser[N, S]) hasAngleClose(start int) bool {
-	depth := 1
-	for i := start + 1; i < len(p.toks); i++ {
+	if !p.angleCloseBuilt {
+		p.buildAngleClose()
+	}
+	return start >= 0 && start < len(p.angleClose) && p.angleClose[start]
+}
+
+func (p *parser[N, S]) buildAngleClose() {
+	p.angleClose = make([]bool, len(p.toks))
+	stack := make([]int, 0, 8)
+	for i := range p.toks {
 		switch p.toks[i].Kind {
 		case token.Lt:
-			depth++
+			stack = append(stack, i)
 		case token.Gt:
-			depth--
-			if depth == 0 {
-				return true
+			if len(stack) != 0 {
+				last := len(stack) - 1
+				p.angleClose[stack[last]] = true
+				stack = stack[:last]
 			}
 		case token.RParen, token.Semicolon, token.EOF:
-			return false
+			stack = stack[:0]
 		default:
 		}
 	}
-	return false
+	p.angleCloseBuilt = true
 }
 
 func (p *parser[N, S]) consumeStructuredMacroArgument(endPos int) N {

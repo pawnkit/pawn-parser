@@ -70,10 +70,23 @@ func (n *Node) field(id FieldID) *Node {
 
 // Text returns the node's exact source text.
 func (n *Node) Text(source []byte) string {
+	return string(n.Bytes(source))
+}
+
+// Bytes returns the node's exact source bytes without allocating.
+func (n *Node) Bytes(source []byte) []byte {
 	if n == nil || n.Start < 0 || n.End > len(source) || n.Start > n.End {
-		return ""
+		return nil
 	}
-	return string(source[n.Start:n.End])
+	return source[n.Start:n.End]
+}
+
+// Range returns the node's half-open source byte range.
+func (n *Node) Range() ByteRange {
+	if n == nil {
+		return ByteRange{}
+	}
+	return ByteRange{Start: n.Start, End: n.End}
 }
 
 // LeadingTrivia returns the trivia attached before the node's first token.
