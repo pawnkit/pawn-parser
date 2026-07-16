@@ -17,6 +17,15 @@ type CompactToken struct {
 	TrailingFlags TriviaFlags
 }
 
+// SyntaxToken stores the token data needed by the grammar.
+type SyntaxToken struct {
+	Kind          Kind
+	Start         uint32
+	End           uint32
+	LeadingFlags  TriviaFlags
+	TrailingFlags TriviaFlags
+}
+
 // TriviaFlags summarizes trivia without retaining its spans.
 type TriviaFlags uint8
 

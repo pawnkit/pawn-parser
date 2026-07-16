@@ -130,6 +130,24 @@ func TestParseForLinterDiscardsTokensAndTrivia(t *testing.T) {
 	}
 }
 
+func TestParseForLinterRestoresDiagnosticPositions(t *testing.T) {
+	t.Parallel()
+	source := []byte("main() {\n    return +;\n}\n")
+	want := Parse(source)
+	got := ParseForLinter(source)
+	if len(got.Diagnostics) != len(want.Diagnostics) || len(got.Diagnostics) == 0 {
+		t.Fatalf("compact diagnostics = %d, want %d", len(got.Diagnostics), len(want.Diagnostics))
+	}
+	for i := range want.Diagnostics {
+		if got.Diagnostics[i].Found.Start != want.Diagnostics[i].Found.Start ||
+			got.Diagnostics[i].Found.End != want.Diagnostics[i].Found.End {
+			t.Fatalf("diagnostic %d position = %+v:%+v, want %+v:%+v", i,
+				got.Diagnostics[i].Found.Start, got.Diagnostics[i].Found.End,
+				want.Diagnostics[i].Found.Start, want.Diagnostics[i].Found.End)
+		}
+	}
+}
+
 func TestParseCompactLexerRetentionMatchesTokenConversion(t *testing.T) {
 	t.Parallel()
 	source := []byte("// lead\nmain() { return value; } // tail\n")

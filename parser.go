@@ -126,17 +126,16 @@ type parser[N comparable, S nodeSink[N]] struct {
 }
 
 type parserTokens struct {
-	full    []token.Token
-	compact []token.CompactToken
-	trivia  []token.Trivia
+	full   []token.Token
+	syntax []token.SyntaxToken
 }
 
 func newParserTokens(tokens []token.Token) parserTokens {
 	return parserTokens{full: tokens}
 }
 
-func newCompactParserTokens(tokens []token.CompactToken, trivia []token.Trivia) parserTokens {
-	return parserTokens{compact: tokens, trivia: trivia}
+func newSyntaxParserTokens(tokens []token.SyntaxToken) parserTokens {
+	return parserTokens{syntax: tokens}
 }
 
 var (
@@ -146,24 +145,20 @@ var (
 
 func (t parserTokens) len() int {
 	if t.full == nil {
-		return len(t.compact)
+		return len(t.syntax)
 	}
 	return len(t.full)
 }
 
 func (t parserTokens) at(index int) token.Token {
 	if t.full == nil {
-		item := t.compact[index]
+		item := t.syntax[index]
 		return token.Token{
-			Kind:  item.Kind,
-			Start: token.Position{Offset: int(item.Start.Offset), Line: int(item.Start.Line), Col: int(item.Start.Col)},
-			End:   token.Position{Offset: int(item.End.Offset), Line: int(item.End.Line), Col: int(item.End.Col)},
-			LeadingTrivia: compactParserTrivia(
-				t.trivia, item.LeadingStart, item.LeadingCount, item.LeadingFlags,
-			),
-			TrailingTrivia: compactParserTrivia(
-				t.trivia, item.TrailingStart, item.TrailingCount, item.TrailingFlags,
-			),
+			Kind:           item.Kind,
+			Start:          token.Position{Offset: int(item.Start)},
+			End:            token.Position{Offset: int(item.End)},
+			LeadingTrivia:  compactParserTrivia(item.LeadingFlags),
+			TrailingTrivia: compactParserTrivia(item.TrailingFlags),
 		}
 	}
 	return t.full[index]
@@ -171,14 +166,14 @@ func (t parserTokens) at(index int) token.Token {
 
 func (t parserTokens) kind(index int) token.Kind {
 	if t.full == nil {
-		return t.compact[index].Kind
+		return t.syntax[index].Kind
 	}
 	return t.full[index].Kind
 }
 
 func (t parserTokens) endOffset(index int) int {
 	if t.full == nil {
-		return int(t.compact[index].End.Offset)
+		return int(t.syntax[index].End)
 	}
 	return t.full[index].End.Offset
 }
@@ -193,21 +188,14 @@ func (t parserTokens) copyTo(dst []token.Token, start, end int) {
 	copy(dst, t.full[start:end])
 }
 
-func compactParserTrivia(trivia []token.Trivia, start, count uint32, flags token.TriviaFlags) []token.Trivia {
-	if trivia == nil {
-		if flags&token.TriviaEndsLine != 0 {
-			return lineTrivia[:]
-		}
-		if flags&token.TriviaPresent != 0 {
-			return presentTrivia[:]
-		}
-		return nil
+func compactParserTrivia(flags token.TriviaFlags) []token.Trivia {
+	if flags&token.TriviaEndsLine != 0 {
+		return lineTrivia[:]
 	}
-	if count == 0 {
-		return nil
+	if flags&token.TriviaPresent != 0 {
+		return presentTrivia[:]
 	}
-	end := start + count
-	return trivia[int(start):int(end):int(end)]
+	return nil
 }
 
 type parserStorage struct {

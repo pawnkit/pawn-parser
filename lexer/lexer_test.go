@@ -11,13 +11,16 @@ func TestCompactSyntaxMatchesTokens(t *testing.T) {
 	t.Parallel()
 	source := []byte("// lead\nnew value = Call(1); // tail\n")
 	want := Tokenize(source)
-	compact := TokenizeCompactSyntax(source)
+	compact, lines := TokenizeSyntax(source)
+	if got := lines.Position(12); got.Line != 2 || got.Col != 5 {
+		t.Fatalf("position = %+v, want line 2 column 5", got)
+	}
 	if len(compact) != len(want) {
 		t.Fatalf("compact token count = %d, want %d", len(compact), len(want))
 	}
 	for i, item := range compact {
-		if item.Kind != want[i].Kind || int(item.Start.Offset) != want[i].Start.Offset ||
-			int(item.End.Offset) != want[i].End.Offset {
+		if item.Kind != want[i].Kind || int(item.Start) != want[i].Start.Offset ||
+			int(item.End) != want[i].End.Offset {
 			t.Fatalf("compact token %d = %+v, want %+v", i, item, want[i])
 		}
 		if (item.LeadingFlags&token.TriviaPresent != 0) != (len(want[i].LeadingTrivia) != 0) {

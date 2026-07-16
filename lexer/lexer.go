@@ -36,10 +36,10 @@ func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.Comp
 	return tokens.finishCompact(fullTrivia, retainTrivia)
 }
 
-// TokenizeCompactSyntax tokenizes src without retaining trivia spans.
-func TokenizeCompactSyntax(src []byte) []token.CompactToken {
+// TokenizeSyntax tokenizes src for grammar parsing.
+func TokenizeSyntax(src []byte) ([]token.SyntaxToken, token.LineMap) {
 	tokens := buildSyntaxTokens(src)
-	return tokens.finishParserCompact()
+	return tokens.finishSyntax(), token.NewLineMap(src)
 }
 
 func buildSyntaxTokens(src []byte) tokenBuilder {
@@ -336,8 +336,8 @@ func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) (
 	return tokens, compact, compactTrivia
 }
 
-func (b *tokenBuilder) finishParserCompact() []token.CompactToken {
-	tokens := make([]token.CompactToken, b.count)
+func (b *tokenBuilder) finishSyntax() []token.SyntaxToken {
+	tokens := make([]token.SyntaxToken, b.count)
 	output := 0
 	for blockIndex, block := range b.blocks {
 		data := block.data
@@ -345,8 +345,8 @@ func (b *tokenBuilder) finishParserCompact() []token.CompactToken {
 			data = data[:b.next]
 		}
 		for _, built := range data {
-			tokens[output] = token.CompactToken{
-				Kind: built.kind, Start: compactPosition(built.start), End: compactPosition(built.end),
+			tokens[output] = token.SyntaxToken{
+				Kind: built.kind, Start: compactUint(built.start.Offset), End: compactUint(built.end.Offset),
 				LeadingFlags: built.leadingFlags, TrailingFlags: built.trailingFlags,
 			}
 			output++
