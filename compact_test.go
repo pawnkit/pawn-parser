@@ -148,6 +148,23 @@ func TestParseForLinterRestoresDiagnosticPositions(t *testing.T) {
 	}
 }
 
+func TestParseProfiles(t *testing.T) {
+	t.Parallel()
+	source := []byte("main() { // comment\n    return;\n}\n")
+	lossless := ParseWithProfile(source, ProfileLossless)
+	if len(lossless.Tree.Nodes) == 0 || len(lossless.Tokens) == 0 || len(lossless.Trivia) == 0 {
+		t.Fatal("lossless profile omitted retained syntax")
+	}
+	analysis := ParseWithProfile(source, ProfileAnalysis)
+	if len(analysis.Tree.Nodes) == 0 || analysis.Tokens != nil || analysis.Trivia != nil {
+		t.Fatal("analysis profile retained tokens or omitted syntax")
+	}
+	tokens := ParseWithProfile(source, ProfileTokensOnly)
+	if len(tokens.Tree.Nodes) != 0 || len(tokens.Tokens) == 0 || len(tokens.Trivia) == 0 || tokens.HasParseErrors() {
+		t.Fatal("tokens-only profile built syntax or omitted tokens")
+	}
+}
+
 func TestParseCompactLexerRetentionMatchesTokenConversion(t *testing.T) {
 	t.Parallel()
 	source := []byte("// lead\nmain() { return value; } // tail\n")

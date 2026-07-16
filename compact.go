@@ -19,10 +19,14 @@ type CompactFile struct {
 	Tree        CompactTree
 	Broken      bool
 	Diagnostics []Diagnostic
+	Profile     Profile
 }
 
 // HasParseErrors reports whether compact parsing produced a syntax error.
 func (f *CompactFile) HasParseErrors() bool {
+	if f != nil && f.Profile == ProfileTokensOnly {
+		return false
+	}
 	return f == nil || len(f.Tree.Nodes) == 0 || f.Broken ||
 		f.Tree.Nodes[f.Tree.Root].HasError || len(f.Diagnostics) != 0
 }
@@ -133,12 +137,16 @@ func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions)
 
 // ParseForLinter parses source without retaining tokens or trivia.
 func ParseForLinter(source []byte) *CompactFile {
-	return ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file.Profile = ProfileAnalysis
+	return file
 }
 
 // ParseTokensForLinter parses an existing token stream for linting.
 func ParseTokensForLinter(source []byte, toks []token.Token) *CompactFile {
-	return ParseTokensCompact(source, toks, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file := ParseTokensCompact(source, toks, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	file.Profile = ProfileAnalysis
+	return file
 }
 
 func parseTokensCompact(

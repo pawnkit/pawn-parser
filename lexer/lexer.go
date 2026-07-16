@@ -33,7 +33,15 @@ func Tokenize(src []byte) []token.Token {
 func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
 	tokens, trivia := buildTokens(src)
 	fullTrivia := trivia.finish()
-	return tokens.finishCompact(fullTrivia, retainTrivia)
+	return tokens.finishCompact(fullTrivia, retainTrivia, true)
+}
+
+// TokenizeCompactOnly tokenizes src without building full token records.
+func TokenizeCompactOnly(src []byte, retainTrivia bool) ([]token.CompactToken, []token.CompactTrivia) {
+	tokens, trivia := buildTokens(src)
+	fullTrivia := trivia.finish()
+	_, compact, compactTrivia := tokens.finishCompact(fullTrivia, retainTrivia, false)
+	return compact, compactTrivia
 }
 
 // TokenizeSyntax tokenizes src for grammar parsing.
@@ -291,8 +299,11 @@ func (b *tokenBuilder) finish(trivia []token.Trivia) []token.Token {
 	return tokens
 }
 
-func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
-	tokens := make([]token.Token, b.count)
+func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia, buildFull bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
+	var tokens []token.Token
+	if buildFull {
+		tokens = make([]token.Token, b.count)
+	}
 	compact := make([]token.CompactToken, b.count)
 	var compactTrivia []token.CompactTrivia
 	if retainTrivia {
@@ -311,10 +322,12 @@ func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia bool) (
 		}
 		for _, built := range data {
 			r := built.trivia
-			tokens[output] = token.Token{
-				Kind: built.kind, Start: built.start, End: built.end,
-				LeadingTrivia:  triviaSlice(trivia, r.leadingStart, r.trailingStart),
-				TrailingTrivia: triviaSlice(trivia, r.trailingStart, r.trailingEnd),
+			if buildFull {
+				tokens[output] = token.Token{
+					Kind: built.kind, Start: built.start, End: built.end,
+					LeadingTrivia:  triviaSlice(trivia, r.leadingStart, r.trailingStart),
+					TrailingTrivia: triviaSlice(trivia, r.trailingStart, r.trailingEnd),
+				}
 			}
 			compact[output] = token.CompactToken{
 				Kind: built.kind, Start: compactPosition(built.start), End: compactPosition(built.end),

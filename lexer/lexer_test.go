@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,6 +34,16 @@ func TestCompactSyntaxMatchesTokens(t *testing.T) {
 		if (item.TrailingFlags&token.TriviaEndsLine != 0) != endsLine {
 			t.Fatalf("compact token %d trailing line summary differs", i)
 		}
+	}
+}
+
+func TestCompactOnlyMatchesCompactTokens(t *testing.T) {
+	t.Parallel()
+	source := []byte("new value; // comment\n")
+	_, wantTokens, wantTrivia := TokenizeCompact(source, true)
+	gotTokens, gotTrivia := TokenizeCompactOnly(source, true)
+	if !reflect.DeepEqual(gotTokens, wantTokens) || !reflect.DeepEqual(gotTrivia, wantTrivia) {
+		t.Fatal("compact-only tokenization differs from compact tokenization")
 	}
 }
 

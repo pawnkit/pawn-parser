@@ -103,3 +103,16 @@ func BenchmarkParseCompactRetainedLargeFile(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkTokensOnlyLargeFile(b *testing.B) {
+	source := benchmarkSource(b)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	b.ResetTimer()
+	for range b.N {
+		file := ParseWithProfile(source, ProfileTokensOnly)
+		if len(file.Tokens) == 0 || len(file.Tree.Nodes) != 0 {
+			b.Fatal("tokens-only profile returned invalid output")
+		}
+	}
+}
