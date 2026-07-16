@@ -5,11 +5,11 @@ import "github.com/pawnkit/pawn-parser/token"
 func (p *parser) parseParameterList() *Node {
 	if !p.at(token.LParen) {
 		p.emitMissingToken(token.LParen, "parameter list")
-		n := &Node{Kind: KindParameterList, HasError: true}
+		n := p.storeNode(Node{Kind: KindParameterList, HasError: true})
 		return n
 	}
 	lp := p.advance()
-	node := &Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia}
+	node := p.storeNode(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
 		parseItem: parseCommaListItem((*parser).parseParameter),
 		stop: func(p *parser) bool {
@@ -18,7 +18,7 @@ func (p *parser) parseParameterList() *Node {
 		},
 	})
 	for _, it := range items {
-		node.addChild(it)
+		p.addChild(node, it)
 	}
 	if p.at(token.RParen) {
 		rp := p.advance()
@@ -39,7 +39,7 @@ func (p *parser) parseParameter() *Node {
 
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
-	node := &Node{Kind: KindParameter, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: KindParameter, Start: start, Leading: leading})
 	p.parseParameterQualifiers(node)
 
 	if p.at(token.Amp) {
@@ -48,8 +48,8 @@ func (p *parser) parseParameter() *Node {
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		setField(node, "tag", tag)
-		node.addChild(tag)
+		p.setField(node, "tag", tag)
+		p.addChild(node, tag)
 	}
 
 	if p.at(token.Amp) {
@@ -72,7 +72,7 @@ func (p *parser) parseParameter() *Node {
 
 func (p *parser) parseParameterQualifiers(node *Node) {
 	for p.at(token.KwConst) || p.at(token.KwStock) {
-		node.addChild(p.newLeaf(KindIdentifier, p.advance()))
+		p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
 	}
 }
 
@@ -88,8 +88,8 @@ func (p *parser) parseParameterName(node *Node) bool {
 		return false
 	}
 	name := p.parseQualifiedIdentifier()
-	setField(node, "name", name)
-	node.addChild(name)
+	p.setField(node, "name", name)
+	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
 	return true
@@ -98,24 +98,24 @@ func (p *parser) parseParameterName(node *Node) bool {
 func (p *parser) parseParameterSuffix(node *Node) {
 	dims := p.parseDimensions()
 	for _, d := range dims {
-		node.addChild(d)
+		p.addChild(node, d)
 		node.End = d.End
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		setField(node, "array", dims[0])
+		p.setField(node, "array", dims[0])
 	}
 	if p.at(token.Lt) {
 		generic := p.parseStateSelector()
-		setField(node, "generic", generic)
-		node.addChild(generic)
+		p.setField(node, "generic", generic)
+		p.addChild(node, generic)
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		def := p.parseAssignment()
-		setField(node, "default_value", def)
-		node.addChild(def)
+		p.setField(node, "default_value", def)
+		p.addChild(node, def)
 		node.End = def.End
 		node.Trailing = def.Trailing
 	}

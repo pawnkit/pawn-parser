@@ -21,12 +21,12 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 	}
 
 	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
-		node := &Node{Kind: KindDirectiveDefine, Start: startOffset, End: nameNode.End, Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia}
-		setField(node, "name", nameNode)
-		node.addChild(nameNode)
+		node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: nameNode.End, Leading: leading, Trailing: p.toks[p.pos-1].TrailingTrivia})
+		p.setField(node, "name", nameNode)
+		p.addChild(node, nameNode)
 		if params != nil {
-			setField(node, "parameters", params)
-			node.addChild(params)
+			p.setField(node, "parameters", params)
+			p.addChild(node, params)
 		}
 		return node
 	}
@@ -45,15 +45,15 @@ func (p *parser) parseDefineDirective(startOffset int) *Node {
 
 	valueNode := p.parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd)
 
-	node := &Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia}
-	setField(node, "name", nameNode)
-	node.addChild(nameNode)
+	node := p.storeNode(Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia})
+	p.setField(node, "name", nameNode)
+	p.addChild(node, nameNode)
 	if params != nil {
-		setField(node, "parameters", params)
-		node.addChild(params)
+		p.setField(node, "parameters", params)
+		p.addChild(node, params)
 	}
-	setField(node, "value", valueNode)
-	node.addChild(valueNode)
+	p.setField(node, "value", valueNode)
+	p.addChild(node, valueNode)
 	return node
 }
 
@@ -66,7 +66,7 @@ func (p *parser) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading
 		}
 	}
 	end := max(last.End.Offset, startOffset)
-	n := directiveSpan(p.source, kind, startOffset, end, leading, last.TrailingTrivia)
+	n := p.directiveSpan(kind, startOffset, end, leading, last.TrailingTrivia)
 	n.HasError = true
 	return n
 }
@@ -74,7 +74,7 @@ func (p *parser) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading
 func (p *parser) parseMacroParamList() (*Node, bool) {
 	startIdx := p.pos
 	lp := p.advance() // '('
-	params := &Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia}
+	params := p.storeNode(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 
 	if p.at(token.RParen) {
 		rp := p.advance()
@@ -89,7 +89,7 @@ func (p *parser) parseMacroParamList() (*Node, bool) {
 			return nil, false
 		}
 		tok := p.advance()
-		params.addChild(p.newLeaf(KindIdentifier, tok))
+		p.addChild(params, p.newLeaf(KindIdentifier, tok))
 
 		if p.at(token.Comma) {
 			p.advance()
@@ -108,7 +108,7 @@ func (p *parser) parseMacroParamList() (*Node, bool) {
 
 func (p *parser) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyEnd int) *Node {
 	raw := func() *Node {
-		return directiveSpan(p.source, KindMacroBody, bodyStart, bodyEnd, nil, nil)
+		return p.directiveSpan(KindMacroBody, bodyStart, bodyEnd, nil, nil)
 	}
 	if bodyStartIdx >= bodyEndIdx {
 		return raw()

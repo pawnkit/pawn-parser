@@ -13,7 +13,7 @@ type Node struct {
 	Tok      token.Token
 	Children []*Node
 
-	fields []fieldEntry
+	fieldData *nodeFieldData
 
 	Start int
 	End   int
@@ -37,12 +37,26 @@ type fieldEntry struct {
 	node *Node
 }
 
+type nodeFieldData struct {
+	inline [2]fieldEntry
+	count  int
+	spill  []fieldEntry
+}
+
 // Field looks up a named child. Returns nil if absent.
 func (n *Node) Field(name string) *Node {
 	if n == nil {
 		return nil
 	}
-	for _, f := range n.fields {
+	if n.fieldData == nil {
+		return nil
+	}
+	for _, f := range n.fieldData.inline[:min(n.fieldData.count, len(n.fieldData.inline))] {
+		if f.name == name {
+			return f.node
+		}
+	}
+	for _, f := range n.fieldData.spill {
 		if f.name == name {
 			return f.node
 		}
@@ -93,11 +107,20 @@ func (n *Node) OperatorTokenHasComment() bool {
 	return false
 }
 
-func setField(n *Node, name string, child *Node) {
+func (p *parser) setField(n *Node, name string, child *Node) {
 	if child == nil {
 		return
 	}
-	n.fields = append(n.fields, fieldEntry{name, child})
+	if n.fieldData == nil {
+		n.fieldData = p.fields.alloc()
+	}
+	entry := fieldEntry{name, child}
+	if n.fieldData.count < len(n.fieldData.inline) {
+		n.fieldData.inline[n.fieldData.count] = entry
+	} else {
+		n.fieldData.spill = append(n.fieldData.spill, entry)
+	}
+	n.fieldData.count++
 }
 
 func (p *parser) newLeaf(kind Kind, tok token.Token) *Node {
@@ -114,9 +137,18 @@ func (p *parser) newLeaf(kind Kind, tok token.Token) *Node {
 func (p *parser) newNode(kind Kind, children ...*Node) *Node {
 	n := p.allocNode()
 	n.Kind = kind
+	count := 0
 	for _, c := range children {
 		if c != nil {
-			n.Children = append(n.Children, c)
+			count++
+		}
+	}
+	if count != 0 {
+		n.Children = p.children.alloc(count)[:0]
+		for _, c := range children {
+			if c != nil {
+				n.Children = append(n.Children, c)
+			}
 		}
 	}
 	n.recalc()
@@ -139,9 +171,15 @@ func (n *Node) recalc() {
 	}
 }
 
-func (n *Node) addChild(c *Node) {
+func (p *parser) addChild(n, c *Node) {
 	if c == nil {
 		return
+	}
+	if len(n.Children) == cap(n.Children) {
+		capacity := max(4, cap(n.Children)*2)
+		children := p.children.alloc(capacity)
+		copy(children, n.Children)
+		n.Children = children[:len(n.Children)]
 	}
 	n.Children = append(n.Children, c)
 	n.End = c.End
@@ -164,17 +202,13 @@ func clampRange(source []byte, start, end int) (int, int) {
 	return start, end
 }
 
-func rawNode(source []byte, start, end int) *Node {
-	start, end = clampRange(source, start, end)
-	return &Node{Kind: KindRaw, Start: start, End: end, HasError: true, Raw: source[start:end]}
-}
-
-func recoveryNode(source []byte, start, end int, found token.Token, context string, expected []token.Kind) *Node {
-	n := rawNode(source, start, end)
+func (p *parser) recoveryNode(start, end int, found token.Token, context string, expected []token.Kind) *Node {
+	start, end = clampRange(p.source, start, end)
+	n := p.storeNode(Node{Kind: KindRaw, Start: start, End: end, HasError: true, Raw: p.source[start:end]})
 	n.ErrorOffset = found.Start.Offset
 	n.ErrorFound = found.Kind
 	n.ErrorExpected = append([]token.Kind(nil), expected...)
-	foundText := strconv.Quote(found.Text(source))
+	foundText := strconv.Quote(found.Text(p.source))
 	if found.Kind == token.EOF {
 		foundText = "end of file"
 	}
@@ -192,7 +226,7 @@ func recoveryNode(source []byte, start, end int, found token.Token, context stri
 	return n
 }
 
-func directiveSpan(source []byte, kind Kind, start, end int, leading, trailing []token.Trivia) *Node {
-	start, end = clampRange(source, start, end)
-	return &Node{Kind: kind, Start: start, End: end, Raw: source[start:end], Leading: leading, Trailing: trailing}
+func (p *parser) directiveSpan(kind Kind, start, end int, leading, trailing []token.Trivia) *Node {
+	start, end = clampRange(p.source, start, end)
+	return p.storeNode(Node{Kind: kind, Start: start, End: end, Raw: p.source[start:end], Leading: leading, Trailing: trailing})
 }

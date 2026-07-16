@@ -5,9 +5,9 @@ import "github.com/pawnkit/pawn-parser/token"
 func (p *parser) parseSwitchStatement() *Node {
 	kw := p.advance()
 	condition := p.parseParenCondition()
-	node := &Node{Kind: KindSwitchStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia}
-	setField(node, "condition", condition)
-	node.addChild(condition)
+	node := p.storeNode(Node{Kind: KindSwitchStatement, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+	p.setField(node, "condition", condition)
+	p.addChild(node, condition)
 
 	if !p.at(token.LBrace) {
 		node.HasError = true
@@ -22,7 +22,7 @@ func (p *parser) parseSwitchStatement() *Node {
 		},
 	})
 	for _, c := range clauses {
-		node.addChild(c)
+		p.addChild(node, c)
 	}
 	if p.at(token.RBrace) {
 		rb := p.advance()
@@ -41,30 +41,30 @@ func (p *parser) parseSwitchClause() *Node {
 		p.suppressTagCast = true
 		values := p.parseCaseValueList()
 		p.suppressTagCast = wasSuppressed
-		node := &Node{Kind: KindCaseClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia}
-		setField(node, "values", values)
-		node.addChild(values)
+		node := p.storeNode(Node{Kind: KindCaseClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
+		p.setField(node, "values", values)
+		p.addChild(node, values)
 		if p.at(token.Colon) {
 			p.advance()
 		} else {
 			node.HasError = true
 		}
 		body := p.parseClauseBody()
-		setField(node, "body", body)
-		node.addChild(body)
+		p.setField(node, "body", body)
+		p.addChild(node, body)
 		return node
 	}
 	if p.at(token.KwDefault) {
 		kw := p.advance()
-		node := &Node{Kind: KindDefaultClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia}
+		node := p.storeNode(Node{Kind: KindDefaultClause, Tok: kw, Start: kw.Start.Offset, Leading: kw.LeadingTrivia})
 		if p.at(token.Colon) {
 			p.advance()
 		} else {
 			node.HasError = true
 		}
 		body := p.parseClauseBody()
-		setField(node, "body", body)
-		node.addChild(body)
+		p.setField(node, "body", body)
+		p.addChild(node, body)
 		return node
 	}
 	tok := p.advance()
@@ -79,21 +79,21 @@ func (p *parser) parseClauseBody() *Node {
 	}
 	if p.at(token.KwCase) || p.at(token.KwDefault) || p.at(token.RBrace) {
 		tok := p.cur()
-		return &Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, Leading: tok.LeadingTrivia}
+		return p.storeNode(Node{Kind: KindEmptyStatement, Start: tok.Start.Offset, End: tok.Start.Offset, Leading: tok.LeadingTrivia})
 	}
 	return p.parseStatement()
 }
 
 func (p *parser) parseCaseValueList() *Node {
-	list := &Node{Kind: KindCaseValueList, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia}
+	list := p.storeNode(Node{Kind: KindCaseValueList, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		v := p.parseCaseValue()
 		if p.at(token.Comma) {
-			mergeCommaTrivia(v, p.advance())
-			list.addChild(v)
+			p.mergeCommaTrivia(v, p.advance())
+			p.addChild(list, v)
 			continue
 		}
-		list.addChild(v)
+		p.addChild(list, v)
 		break
 	}
 	return list
@@ -105,8 +105,8 @@ func (p *parser) parseCaseValue() *Node {
 		p.advance()
 		end := p.parseTernary()
 		node := p.newNode(KindCaseRange, start, end)
-		setField(node, "start", start)
-		setField(node, "end", end)
+		p.setField(node, "start", start)
+		p.setField(node, "end", end)
 		return node
 	}
 	return start

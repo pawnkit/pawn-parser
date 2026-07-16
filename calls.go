@@ -17,13 +17,13 @@ func (p *parser) parsePostfix() *Node {
 		case token.PlusPlus, token.MinusMinus:
 			opTok := p.advance()
 			node := p.newNode(KindUpdateExpression, expr)
-			setField(node, "expression", expr)
+			p.setField(node, "expression", expr)
 			node.Tok = opTok
 			expr = node
 		case token.Identifier:
 			opTok := p.advance()
 			node := p.newNode(KindUnaryExpression, expr)
-			setField(node, "expression", expr)
+			p.setField(node, "expression", expr)
 			node.Tok = opTok
 			node.End = opTok.End.Offset
 			node.Trailing = opTok.TrailingTrivia
@@ -59,10 +59,10 @@ func (p *parser) parseMacroPostfixSelection(target *Node) *Node {
 		default:
 		}
 	}
-	node := directiveSpan(p.source, KindMacroBody, target.Start, last.End.Offset, target.Leading, last.TrailingTrivia)
+	node := p.directiveSpan(KindMacroBody, target.Start, last.End.Offset, target.Leading, last.TrailingTrivia)
 	node.Tok = lt
 	node.Children = children
-	setField(node, "target", target)
+	p.setField(node, "target", target)
 	return node
 }
 
@@ -71,8 +71,8 @@ func (p *parser) parseCellSelection(target *Node) *Node {
 	index := p.parseExpression()
 	node := p.newNode(KindSubscriptExpression, target, index)
 	node.Tok = open
-	setField(node, "array", target)
-	setField(node, "index", index)
+	p.setField(node, "array", target)
+	p.setField(node, "index", index)
 	if p.at(token.RBrace) {
 		rb := p.advance()
 		node.End = rb.End.Offset
@@ -101,8 +101,8 @@ func (p *parser) parseMemberSelection(target *Node) *Node {
 	}
 	member := p.newLeaf(KindIdentifier, p.advance())
 	node := p.newNode(KindBinaryExpression, target, member)
-	setField(node, "left", target)
-	setField(node, "right", member)
+	p.setField(node, "left", target)
+	p.setField(node, "right", member)
 	node.Tok = op
 	return node
 }
@@ -110,8 +110,8 @@ func (p *parser) parseMemberSelection(target *Node) *Node {
 func (p *parser) parseCall(callee *Node) *Node {
 	args := p.parseArgumentList()
 	node := p.newNode(KindCallExpression, callee, args)
-	setField(node, "function", callee)
-	setField(node, "arguments", args)
+	p.setField(node, "function", callee)
+	p.setField(node, "arguments", args)
 	return node
 }
 
@@ -123,13 +123,13 @@ func (p *parser) parseCallArgument() *Node {
 		p.advance()
 		p.advance()
 		last := p.advance()
-		return &Node{
+		return p.storeNode(Node{
 			Kind:     KindIteratorArgument,
 			Start:    first.Start.Offset,
 			End:      last.End.Offset,
 			Leading:  first.LeadingTrivia,
 			Trailing: last.TrailingTrivia,
-		}
+		})
 	}
 	if !p.at(token.Dot) {
 		return p.parseAssignment()
@@ -141,7 +141,7 @@ func (p *parser) parseCallArgument() *Node {
 		return n
 	}
 	nameTok := p.advance()
-	name := &Node{Kind: KindArgumentName, Tok: nameTok, Start: dot.Start.Offset, End: nameTok.End.Offset, Leading: dot.LeadingTrivia, Trailing: nameTok.TrailingTrivia}
+	name := p.storeNode(Node{Kind: KindArgumentName, Tok: nameTok, Start: dot.Start.Offset, End: nameTok.End.Offset, Leading: dot.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
 	if !p.at(token.Assign) {
 		name.HasError = true
 		return name
@@ -149,15 +149,15 @@ func (p *parser) parseCallArgument() *Node {
 	opTok := p.advance()
 	right := p.parseAssignment()
 	node := p.newNode(KindAssignmentExpression, name, right)
-	setField(node, "left", name)
-	setField(node, "right", right)
+	p.setField(node, "left", name)
+	p.setField(node, "right", right)
 	node.Tok = opTok
 	return node
 }
 
 func (p *parser) parseArgumentList() *Node {
 	lp := p.advance()
-	node := &Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia}
+	node := p.storeNode(Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	for !p.atEnd() && !p.at(token.RParen) {
 		startPos := p.pos
 		endPos := p.argumentEnd(startPos)
@@ -168,10 +168,10 @@ func (p *parser) parseArgumentList() *Node {
 			p.broken = wasBroken
 			arg = p.consumeStructuredMacroArgument(endPos)
 		}
-		node.addChild(arg)
+		p.addChild(node, arg)
 		if p.at(token.Comma) {
 			comma := p.advance()
-			mergeCommaTrivia(arg, comma)
+			p.mergeCommaTrivia(arg, comma)
 		}
 	}
 	if p.at(token.RParen) {
@@ -253,7 +253,7 @@ func (p *parser) consumeStructuredMacroArgument(endPos int) *Node {
 			parts = append(parts, p.newLeaf(KindLiteral, last))
 		}
 	}
-	node := directiveSpan(p.source, KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)
+	node := p.directiveSpan(KindMacroBody, start.Start.Offset, last.End.Offset, start.LeadingTrivia, last.TrailingTrivia)
 	node.Children = parts
 	return node
 }
@@ -275,8 +275,8 @@ func (p *parser) parseSubscript(target *Node) *Node {
 	}
 	node := p.newNode(KindSubscriptExpression, target, index)
 	node.Tok = open
-	setField(node, "array", target)
-	setField(node, "index", index)
+	p.setField(node, "array", target)
+	p.setField(node, "index", index)
 	if p.at(token.RBracket) {
 		rb := p.advance()
 		node.End = rb.End.Offset

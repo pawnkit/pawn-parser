@@ -39,3 +39,25 @@ func TestNodeArenaUsesConservativeBoundedBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeArenaRewindReusesAbandonedStorage(t *testing.T) {
+	t.Parallel()
+
+	var arena nodeArena
+	first := arena.alloc()
+	mark := arena.mark()
+	abandoned := arena.alloc()
+	abandoned.Children = []*Node{first}
+
+	arena.rewind(mark)
+	reused := arena.alloc()
+	if reused != abandoned {
+		t.Fatal("rewind did not reuse abandoned node storage")
+	}
+	if len(reused.Children) != 0 {
+		t.Fatal("rewind did not clear abandoned node references")
+	}
+	if first != &arena.blocks[0][0] {
+		t.Fatal("rewind changed a live node pointer")
+	}
+}

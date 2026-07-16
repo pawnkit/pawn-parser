@@ -8,13 +8,13 @@ func (p *parser) parseStateSelector() *Node {
 	}
 	startIdx := p.pos
 	lt := p.advance()
-	node := &Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia}
+	node := p.storeNode(Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia})
 	for !p.at(token.Gt) {
 		if p.cur().Kind != token.Identifier && !isKeywordToken(p.cur().Kind) {
 			p.pos = startIdx
 			return p.rawStateSelector()
 		}
-		node.addChild(p.newLeaf(KindIdentifier, p.advance()))
+		p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
 		if p.at(token.Comma) {
 			p.advance()
 			continue
@@ -34,7 +34,7 @@ func (p *parser) parseStateSelector() *Node {
 func (p *parser) rawStateSelector() *Node {
 	stateStart := p.pos
 	p.skipAngleStateSelector()
-	n := directiveSpan(p.source, KindStateSelector, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset, nil, nil)
+	n := p.directiveSpan(KindStateSelector, p.toks[stateStart].Start.Offset, p.toks[p.pos-1].End.Offset, nil, nil)
 	return n
 }
 
@@ -64,8 +64,8 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		name := p.parseQualifiedIdentifier()
 		p.rememberTag(name.Text(p.source))
 		colon := p.advance()
-		node := &Node{Kind: KindTaggedType, Start: name.Start, End: colon.End.Offset, Leading: name.Leading, Trailing: colon.TrailingTrivia}
-		node.addChild(name)
+		node := p.storeNode(Node{Kind: KindTaggedType, Start: name.Start, End: colon.End.Offset, Leading: name.Leading, Trailing: colon.TrailingTrivia})
+		p.addChild(node, name)
 		node.End = colon.End.Offset
 		node.Trailing = colon.TrailingTrivia
 		return node
@@ -74,8 +74,8 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 		tagTok := p.advance()
 		p.rememberTag(tagTok.Text(p.source))
 		colon := p.advance()
-		node := &Node{Kind: KindTaggedType, Start: tagTok.Start.Offset, Leading: tagTok.LeadingTrivia}
-		node.addChild(p.newLeaf(KindIdentifier, tagTok))
+		node := p.storeNode(Node{Kind: KindTaggedType, Start: tagTok.Start.Offset, Leading: tagTok.LeadingTrivia})
+		p.addChild(node, p.newLeaf(KindIdentifier, tagTok))
 		node.End = colon.End.Offset
 		node.Trailing = colon.TrailingTrivia
 		return node
@@ -83,13 +83,13 @@ func (p *parser) parseOptionalTagPrefix() *Node {
 	if p.cur().Kind == token.LBrace {
 		saved := p.pos
 		lb := p.advance()
-		node := &Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia}
+		node := p.storeNode(Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		for {
 			if !p.at(token.Identifier) {
 				p.pos = saved
 				return nil
 			}
-			node.addChild(p.newLeaf(KindIdentifier, p.advance()))
+			p.addChild(node, p.newLeaf(KindIdentifier, p.advance()))
 			if p.at(token.Comma) {
 				p.advance()
 				continue
@@ -148,16 +148,16 @@ func (p *parser) parseDimensions() []*Node {
 	var dims []*Node
 	for p.at(token.LBracket) {
 		lb := p.advance()
-		dim := &Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia}
+		dim := p.storeNode(Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		if !p.at(token.RBracket) {
 			expr := p.parseExpression()
-			setField(dim, "size", expr)
-			dim.addChild(expr)
+			p.setField(dim, "size", expr)
+			p.addChild(dim, expr)
 		}
 		if p.at(token.Identifier) && p.cur().Text(p.source) == "char" {
 			packed := p.newLeaf(KindIdentifier, p.advance())
-			setField(dim, "packed", packed)
-			dim.addChild(packed)
+			p.setField(dim, "packed", packed)
+			p.addChild(dim, packed)
 		}
 		if p.at(token.RBracket) {
 			rb := p.advance()

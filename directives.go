@@ -170,8 +170,8 @@ func (p *parser) parseItemSequence(g itemGrammar) []*Node {
 			if item.Kind == KindConditionalRegion && p.at(token.LBrace) && conditionalFunctionHeaders(item) {
 				body := p.parseBlock()
 				wrapper := p.newNode(KindConditionalFunction, item, body)
-				setField(wrapper, "headers", item)
-				setField(wrapper, "body", body)
+				p.setField(wrapper, "headers", item)
+				p.setField(wrapper, "body", body)
 				item = wrapper
 			}
 			items = append(items, item)
@@ -186,14 +186,14 @@ func (p *parser) attachSharedAlternative(conditional *Node) {
 	}
 	p.advance()
 	alternative := p.parseControlledStatement()
-	setField(conditional, "alternative", alternative)
+	p.setField(conditional, "alternative", alternative)
 	for _, branch := range conditional.Children {
 		ifStatement := trailingBranchIf(branch)
 		if ifStatement == nil || ifStatement.Field("alternative") != nil {
 			continue
 		}
-		setField(ifStatement, "alternative", alternative)
-		setField(branch, "shared_alternative", alternative)
+		p.setField(ifStatement, "alternative", alternative)
+		p.setField(branch, "shared_alternative", alternative)
 	}
 	conditional.End = alternative.End
 	conditional.Trailing = alternative.Trailing
@@ -221,12 +221,12 @@ func (p *parser) attachConditionalContinuation(items []*Node, conditional *Node)
 	if previous.Kind != KindIfStatement || previous.Field("alternative") != nil {
 		return false
 	}
-	setField(previous, "conditional_alternatives", conditional)
-	previous.addChild(conditional)
+	p.setField(previous, "conditional_alternatives", conditional)
+	p.addChild(previous, conditional)
 	p.advance()
 	alternative := p.parseControlledStatement()
-	setField(previous, "alternative", alternative)
-	previous.addChild(alternative)
+	p.setField(previous, "alternative", alternative)
+	p.addChild(previous, alternative)
 	return true
 }
 
@@ -265,14 +265,14 @@ func parseCommaListItem(parseOne func(*parser) *Node) func(*parser) *Node {
 		item := parseOne(p)
 		if p.at(token.Comma) {
 			comma := p.advance()
-			mergeCommaTrivia(item, comma)
+			p.mergeCommaTrivia(item, comma)
 		}
 		return item
 	}
 }
 
 func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.Kind, parseItem func(*parser) *Node) *Node {
-	node := &Node{Kind: kind, Start: open.Start.Offset, Leading: open.LeadingTrivia}
+	node := p.storeNode(Node{Kind: kind, Start: open.Start.Offset, Leading: open.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
 		parseItem:              parseCommaListItem(parseItem),
 		parseUnknownHashAsItem: true,
@@ -284,7 +284,7 @@ func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.
 		},
 	})
 	for _, it := range items {
-		node.addChild(it)
+		p.addChild(node, it)
 	}
 	if p.at(closeTok) {
 		closeToken := p.advance()
@@ -297,16 +297,16 @@ func (p *parser) parseBracketedList(kind Kind, open token.Token, closeTok token.
 	return node
 }
 
-func mergeCommaTrivia(item *Node, comma token.Token) {
+func (p *parser) mergeCommaTrivia(item *Node, comma token.Token) {
 	if item == nil {
 		return
 	}
 	if len(comma.LeadingTrivia) == 0 && len(comma.TrailingTrivia) == 0 {
 		return
 	}
-	merged := make([]token.Trivia, 0, len(item.Trailing)+len(comma.LeadingTrivia)+len(comma.TrailingTrivia))
-	merged = append(merged, item.Trailing...)
-	merged = append(merged, comma.LeadingTrivia...)
-	merged = append(merged, comma.TrailingTrivia...)
+	merged := p.trivia.alloc(len(item.Trailing) + len(comma.LeadingTrivia) + len(comma.TrailingTrivia))
+	offset := copy(merged, item.Trailing)
+	offset += copy(merged[offset:], comma.LeadingTrivia)
+	copy(merged[offset:], comma.TrailingTrivia)
 	item.Trailing = merged
 }

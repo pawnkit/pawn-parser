@@ -34,11 +34,11 @@ func (p *parser) consumeRawDirectiveLine(startOffset int, kind Kind) *Node {
 	}
 	payloadEndIdx := p.pos
 	end := max(last.End.Offset, startOffset)
-	n := directiveSpan(p.source, kind, startOffset, end, leading, last.TrailingTrivia)
+	n := p.directiveSpan(kind, startOffset, end, leading, last.TrailingTrivia)
 
 	if kind == KindDirectiveIf || kind == KindDirectiveElseif || kind == KindDirectiveAssert {
 		if cond, ok := p.trySubParseExpression(payloadStartIdx, payloadEndIdx); ok {
-			setField(n, "condition", cond)
+			p.setField(n, "condition", cond)
 			n.Children = []*Node{cond}
 		}
 	}
@@ -61,7 +61,7 @@ func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
 	p.advance()
 	p.advance()
 	if p.atEnd() || lastTokenEndsLine(p.toks[p.pos-1]) {
-		return directiveSpan(p.source, kind, startOffset, p.toks[p.pos-1].End.Offset, leading, p.toks[p.pos-1].TrailingTrivia)
+		return p.directiveSpan(kind, startOffset, p.toks[p.pos-1].End.Offset, leading, p.toks[p.pos-1].TrailingTrivia)
 	}
 
 	pathStart := p.cur().Start.Offset
@@ -73,12 +73,12 @@ func (p *parser) parseIncludeDirective(startOffset int, kind Kind) *Node {
 		}
 	}
 	pathEnd := last.End.Offset
-	pathNode := directiveSpan(p.source, KindDirectivePath, pathStart, pathEnd, nil, last.TrailingTrivia)
+	pathNode := p.directiveSpan(KindDirectivePath, pathStart, pathEnd, nil, last.TrailingTrivia)
 	pathNode.Trailing = last.TrailingTrivia
 
-	node := &Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia}
+	node := p.storeNode(Node{Kind: kind, Start: startOffset, End: pathEnd, Leading: leading, Trailing: last.TrailingTrivia})
 	node.Children = []*Node{pathNode}
-	setField(node, "path", pathNode)
+	p.setField(node, "path", pathNode)
 	return node
 }
 

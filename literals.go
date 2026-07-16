@@ -36,10 +36,10 @@ func (p *parser) parsePrimary() *Node {
 		if isExpressionBoundary(tok.Kind) {
 			p.emitMissing(DiagnosticMissingExpression, "expected expression",
 				token.Identifier, token.IntLiteral, token.LParen)
-			n := &Node{
+			n := p.storeNode(Node{
 				Kind: KindLiteral, Tok: tok, Start: tok.Start.Offset, End: tok.Start.Offset, HasError: true,
 				Leading: tok.LeadingTrivia,
-			}
+			})
 			return n
 		}
 		p.advance()
@@ -88,9 +88,9 @@ func (p *parser) parseStringizeExpression() *Node {
 	hash := p.advance() // '#'
 	nameTok := p.advance()
 	name := p.newLeaf(KindIdentifier, nameTok)
-	node := &Node{Kind: KindStringizeExpression, Tok: hash, Start: hash.Start.Offset, End: nameTok.End.Offset, Leading: hash.LeadingTrivia, Trailing: nameTok.TrailingTrivia}
-	setField(node, "name", name)
-	node.addChild(name)
+	node := p.storeNode(Node{Kind: KindStringizeExpression, Tok: hash, Start: hash.Start.Offset, End: nameTok.End.Offset, Leading: hash.LeadingTrivia, Trailing: nameTok.TrailingTrivia})
+	p.setField(node, "name", name)
+	p.addChild(node, name)
 	return node
 }
 
@@ -99,10 +99,10 @@ func (p *parser) parseStringConcat() *Node {
 	if !p.isStringPartStart() {
 		return first
 	}
-	concat := &Node{Kind: KindStringConcat, Start: first.Start, Leading: first.Leading}
-	concat.addChild(first)
+	concat := p.storeNode(Node{Kind: KindStringConcat, Start: first.Start, Leading: first.Leading})
+	p.addChild(concat, first)
 	for p.isStringPartStart() {
-		concat.addChild(p.parseStringPart())
+		p.addChild(concat, p.parseStringPart())
 	}
 	return concat
 }
@@ -111,7 +111,7 @@ func (p *parser) parseParenthesized() *Node {
 	lp := p.advance()
 	inner := p.parseExpression()
 	node := p.newNode(KindParenthesizedExpression, inner)
-	setField(node, "expression", inner)
+	p.setField(node, "expression", inner)
 	node.Start = lp.Start.Offset
 	node.Leading = lp.LeadingTrivia
 	if p.at(token.RParen) {

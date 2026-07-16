@@ -15,16 +15,16 @@ func (p *parser) parseVariableDeclarationWithQualifiers(quals []*Node) *Node {
 		leading = quals[0].Leading
 	}
 
-	node := &Node{Kind: KindVariableDeclaration, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: KindVariableDeclaration, Start: start, Leading: leading})
 	for _, q := range quals {
-		node.addChild(q)
+		p.addChild(node, q)
 	}
 
 	declarators := p.parseDeclaratorList()
 	for _, d := range declarators {
-		node.addChild(d)
+		p.addChild(node, d)
 	}
-	setField(node, "storage", firstOrNil(quals))
+	p.setField(node, "storage", firstOrNil(quals))
 
 	if p.at(token.Semicolon) {
 		semi := p.advance()
@@ -49,12 +49,12 @@ func (p *parser) parseDeclaratorList() []*Node {
 func (p *parser) parseDeclarator() *Node {
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
-	node := &Node{Kind: KindVariableDeclarator, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: KindVariableDeclarator, Start: start, Leading: leading})
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		setField(node, "tag", tag)
-		node.addChild(tag)
+		p.setField(node, "tag", tag)
+		p.addChild(node, tag)
 	}
 
 	if !isFunctionNameToken(p.cur().Kind) {
@@ -63,36 +63,36 @@ func (p *parser) parseDeclarator() *Node {
 		return node
 	}
 	name := p.parseQualifiedIdentifier()
-	setField(node, "name", name)
-	node.addChild(name)
+	p.setField(node, "name", name)
+	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
 	if p.at(token.Lt) {
 		selector := p.parseStateSelector()
-		setField(node, "capacity", selector)
-		node.addChild(selector)
+		p.setField(node, "capacity", selector)
+		p.addChild(node, selector)
 	}
 
 	dims := p.parseDimensions()
 	for _, d := range dims {
-		node.addChild(d)
+		p.addChild(node, d)
 		node.End = d.End
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		setField(node, "array", dims[0])
+		p.setField(node, "array", dims[0])
 	}
 	if p.at(token.Lt) {
 		selector := p.parseStateSelector()
-		setField(node, "capacity", selector)
-		node.addChild(selector)
+		p.setField(node, "capacity", selector)
+		p.addChild(node, selector)
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		init := p.parseDeclaratorInitializer()
-		setField(node, "initializer", init)
-		node.addChild(init)
+		p.setField(node, "initializer", init)
+		p.addChild(node, init)
 		node.End = init.End
 		node.Trailing = init.Trailing
 	}
@@ -114,22 +114,22 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		leading = quals[0].Leading
 	}
 	kw := p.advance()
-	node := &Node{Kind: KindEnumDeclaration, Tok: kw, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: KindEnumDeclaration, Tok: kw, Start: start, Leading: leading})
 	for _, q := range quals {
-		node.addChild(q)
+		p.addChild(node, q)
 	}
 
 	if p.at(token.Identifier) {
 		name := p.parseQualifiedIdentifier()
-		setField(node, "name", name)
-		node.addChild(name)
+		p.setField(node, "name", name)
+		p.addChild(node, name)
 	}
 
 	var tag *Node
 	switch {
 	case p.at(token.Colon) && p.peek(1).Kind == token.LBrace:
 		colon := p.advance()
-		tag = directiveSpan(p.source, KindTaggedType, colon.Start.Offset, colon.End.Offset, colon.LeadingTrivia, colon.TrailingTrivia)
+		tag = p.directiveSpan(KindTaggedType, colon.Start.Offset, colon.End.Offset, colon.LeadingTrivia, colon.TrailingTrivia)
 	case p.at(token.Colon) && p.peek(1).Kind == token.Identifier:
 		colon := p.advance()
 		tag = p.newLeaf(KindTaggedType, p.advance())
@@ -138,13 +138,13 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		tag = p.parseOptionalTagPrefix()
 	}
 	if tag != nil {
-		setField(node, "tag", tag)
-		node.addChild(tag)
+		p.setField(node, "tag", tag)
+		p.addChild(node, tag)
 	}
 
 	if increment := p.parseEnumIncrementClause(); increment != nil {
-		setField(node, "increment", increment)
-		node.addChild(increment)
+		p.setField(node, "increment", increment)
+		p.addChild(node, increment)
 	}
 
 	if !p.at(token.LBrace) {
@@ -153,7 +153,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		return node
 	}
 	lb := p.advance()
-	body := &Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia}
+	body := p.storeNode(Node{Kind: KindBlock, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 	items := p.parseItemSequence(itemGrammar{
 		parseItem: parseCommaListItem((*parser).parseEnumEntry),
 		stop: func(p *parser) bool {
@@ -162,7 +162,7 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		},
 	})
 	for _, it := range items {
-		body.addChild(it)
+		p.addChild(body, it)
 	}
 	if p.at(token.RBrace) {
 		rb := p.advance()
@@ -172,8 +172,8 @@ func (p *parser) parseEnumDeclaration(quals []*Node) *Node {
 		body.HasError = true
 		p.emitMissingToken(token.RBrace, "enum body")
 	}
-	setField(node, "body", body)
-	node.addChild(body)
+	p.setField(node, "body", body)
+	p.addChild(node, body)
 	node.End = body.End
 	node.Trailing = body.Trailing
 
@@ -203,7 +203,7 @@ func (p *parser) parseEnumIncrementClause() *Node {
 			// Other tokens don't affect paren depth.
 		}
 	}
-	n := directiveSpan(p.source, KindEnumIncrementClause, lp.Start.Offset, last.End.Offset, lp.LeadingTrivia, last.TrailingTrivia)
+	n := p.directiveSpan(KindEnumIncrementClause, lp.Start.Offset, last.End.Offset, lp.LeadingTrivia, last.TrailingTrivia)
 	n.Leading = lp.LeadingTrivia
 	n.Trailing = last.TrailingTrivia
 	return n
@@ -212,12 +212,12 @@ func (p *parser) parseEnumIncrementClause() *Node {
 func (p *parser) parseEnumEntry() *Node {
 	start := p.cur().Start.Offset
 	leading := p.cur().LeadingTrivia
-	node := &Node{Kind: KindEnumEntry, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: KindEnumEntry, Start: start, Leading: leading})
 
 	tag := p.parseOptionalTagPrefix()
 	if tag != nil {
-		setField(node, "tag", tag)
-		node.addChild(tag)
+		p.setField(node, "tag", tag)
+		p.addChild(node, tag)
 	}
 
 	if !p.at(token.Identifier) {
@@ -231,26 +231,26 @@ func (p *parser) parseEnumEntry() *Node {
 		return node
 	}
 	name := p.parseQualifiedIdentifier()
-	setField(node, "name", name)
-	node.addChild(name)
+	p.setField(node, "name", name)
+	p.addChild(node, name)
 	node.End = name.End
 	node.Trailing = name.Trailing
 
 	dims := p.parseDimensions()
 	for _, d := range dims {
-		node.addChild(d)
+		p.addChild(node, d)
 		node.End = d.End
 		node.Trailing = d.Trailing
 	}
 	if len(dims) > 0 {
-		setField(node, "array", dims[0])
+		p.setField(node, "array", dims[0])
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		val := p.parseTernary()
-		setField(node, "value", val)
-		node.addChild(val)
+		p.setField(node, "value", val)
+		p.addChild(node, val)
 		node.End = val.End
 		node.Trailing = val.Trailing
 	}

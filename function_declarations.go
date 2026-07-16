@@ -42,17 +42,17 @@ func (p *parser) trySingleStatementConditional() (node *Node, ok bool) {
 	p.condDepth++
 	defer func() { p.condDepth-- }()
 
-	region := &Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia}
+	region := p.storeNode(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		if !p.at(token.Hash) {
 			return nil, false
 		}
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
-		branch := &Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing}
-		setField(branch, "directive", directive)
-		branch.addChild(directive)
-		region.addChild(branch)
+		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
+		p.setField(branch, "directive", directive)
+		p.addChild(branch, directive)
+		p.addChild(region, branch)
 
 		if dk == dirEndif {
 			break
@@ -62,7 +62,7 @@ func (p *parser) trySingleStatementConditional() (node *Node, ok bool) {
 		}
 
 		stmt := p.parseStatement()
-		branch.addChild(stmt)
+		p.addChild(branch, stmt)
 		branch.End = stmt.End
 		branch.Trailing = stmt.Trailing
 	}
@@ -105,47 +105,47 @@ func (p *parser) parseFunctionLike(quals []*Node) *Node {
 		body = p.parseUnbracedFunctionBody()
 	}
 
-	node := &Node{Kind: kind, Start: start, Leading: leading}
+	node := p.storeNode(Node{Kind: kind, Start: start, Leading: leading})
 	for _, q := range quals {
-		node.addChild(q)
+		p.addChild(node, q)
 	}
-	setField(node, "storage", firstOrNil(quals))
+	p.setField(node, "storage", firstOrNil(quals))
 	if tag != nil {
-		setField(node, "tag", tag)
-		node.addChild(tag)
+		p.setField(node, "tag", tag)
+		p.addChild(node, tag)
 	}
 	for _, dimension := range callingConvention {
-		node.addChild(dimension)
+		p.addChild(node, dimension)
 	}
-	setField(node, "calling_convention", firstOrNil(callingConvention))
-	setField(node, "name", name)
-	node.addChild(name)
+	p.setField(node, "calling_convention", firstOrNil(callingConvention))
+	p.setField(node, "name", name)
+	p.addChild(node, name)
 	for _, dimension := range nameDimensions {
-		node.addChild(dimension)
+		p.addChild(node, dimension)
 	}
-	setField(node, "dimensions", firstOrNil(nameDimensions))
+	p.setField(node, "dimensions", firstOrNil(nameDimensions))
 	if generic != nil {
-		setField(node, "generic", generic)
-		node.addChild(generic)
+		p.setField(node, "generic", generic)
+		p.addChild(node, generic)
 	}
-	setField(node, "parameters", params)
-	node.addChild(params)
+	p.setField(node, "parameters", params)
+	p.addChild(node, params)
 	if stateSel != nil {
-		setField(node, "state", stateSel)
-		node.addChild(stateSel)
+		p.setField(node, "state", stateSel)
+		p.addChild(node, stateSel)
 	}
 
 	if body != nil {
-		setField(node, "body", body)
-		node.addChild(body)
+		p.setField(node, "body", body)
+		p.addChild(node, body)
 		return node
 	}
 
 	if p.at(token.Assign) {
 		p.advance()
 		alias := p.parseAssignment()
-		setField(node, "alias", alias)
-		node.addChild(alias)
+		p.setField(node, "alias", alias)
+		p.addChild(node, alias)
 		node.End = alias.End
 		node.Trailing = alias.Trailing
 	}

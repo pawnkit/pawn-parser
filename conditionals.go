@@ -9,12 +9,20 @@ import (
 func (p *parser) parseConditionalRegion(g itemGrammar) *Node {
 	startPos := p.pos
 	savedBroken := p.broken
+	arenaMark := p.arena.mark()
+	fieldMark := p.fields.mark()
+	childMark := p.children.mark()
+	triviaMark := p.trivia.mark()
 	region, ok := p.tryParseConditionalRegion(g)
 	if ok {
 		return region
 	}
 	p.pos = startPos
 	p.broken = savedBroken
+	p.arena.rewind(arenaMark)
+	p.fields.rewind(fieldMark)
+	p.children.rewind(childMark)
+	p.trivia.rewind(triviaMark)
 	if p.isConditionalSplice() {
 		return p.consumeConditionalSplice()
 	}
@@ -132,14 +140,14 @@ func (p *parser) consumeConditionalSplice() *Node {
 			break
 		}
 	}
-	return &Node{
+	return p.storeNode(Node{
 		Kind:     KindConditionalSplice,
 		Start:    start,
 		End:      last.End.Offset,
 		Leading:  leading,
 		Trailing: last.TrailingTrivia,
 		Raw:      p.source[start:last.End.Offset],
-	}
+	})
 }
 
 func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) {
@@ -159,17 +167,17 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 		return nil, false
 	}
 
-	region := &Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia}
+	region := p.storeNode(Node{Kind: KindConditionalRegion, Start: p.cur().Start.Offset, Leading: p.cur().LeadingTrivia})
 	for {
 		if !p.at(token.Hash) {
 			return nil, false
 		}
 		dk := p.peekDirectiveKeyword()
 		directive := p.consumeRawDirectiveLine(p.cur().Start.Offset, directiveNodeKind(dk))
-		branch := &Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing}
-		setField(branch, "directive", directive)
+		branch := p.storeNode(Node{Kind: KindConditionalBranch, Start: directive.Start, End: directive.End, Leading: directive.Leading, Trailing: directive.Trailing})
+		p.setField(branch, "directive", directive)
 		branch.Children = append(branch.Children, directive)
-		region.addChild(branch)
+		p.addChild(region, branch)
 
 		if dk == dirEndif {
 			break
@@ -181,7 +189,7 @@ func (p *parser) tryParseConditionalRegion(g itemGrammar) (node *Node, ok bool) 
 		p.branchTop = true
 		items := p.parseItemSequence(g)
 		for _, it := range items {
-			branch.addChild(it)
+			p.addChild(branch, it)
 		}
 	}
 	if conditionalNeedsSharedFallback(region, p.source) && !conditionalFunctionHeaders(region) {
@@ -273,31 +281,31 @@ func (p *parser) rawConditionalRegion() *Node {
 			}
 		}
 	}
-	return &Node{
+	return p.storeNode(Node{
 		Kind:     KindSharedConditional,
 		Start:    startOffset,
 		End:      last.End.Offset,
 		Leading:  leading,
 		Trailing: last.TrailingTrivia,
 		Raw:      p.source[startOffset:last.End.Offset],
-	}
+	})
 }
 
 func (p *parser) finishSharedConditional(start int, leading []token.Trivia, last token.Token, depth int) *Node {
-	prefix := &Node{Kind: KindSharedConditionalPrefix, Start: start, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[start:last.End.Offset]}
+	prefix := p.storeNode(Node{Kind: KindSharedConditionalPrefix, Start: start, End: last.End.Offset, Leading: leading, Trailing: last.TrailingTrivia, Raw: p.source[start:last.End.Offset]})
 	if depth == 0 && p.at(token.LBrace) {
 		return p.newSharedConditional(prefix, p.parseBlock())
 	}
 	if depth != 1 || p.atEnd() {
 		return nil
 	}
-	body := &Node{Kind: KindBlock, Start: last.End.Offset}
+	body := p.storeNode(Node{Kind: KindBlock, Start: last.End.Offset})
 	items := p.parseItemSequence(itemGrammar{
 		parseItem: func(p *parser) *Node { return p.parseStatement() },
 		stop:      func(p *parser) bool { return p.at(token.RBrace) },
 	})
 	for _, item := range items {
-		body.addChild(item)
+		p.addChild(body, item)
 	}
 	if !p.at(token.RBrace) {
 		return nil
@@ -310,8 +318,8 @@ func (p *parser) finishSharedConditional(start int, leading []token.Trivia, last
 
 func (p *parser) newSharedConditional(prefix, body *Node) *Node {
 	node := p.newNode(KindSharedConditional, prefix, body)
-	setField(node, "prefix", prefix)
-	setField(node, "body", body)
+	p.setField(node, "prefix", prefix)
+	p.setField(node, "body", body)
 	p.parseSharedConditionalAlternative(node)
 	return node
 }
@@ -322,8 +330,8 @@ func (p *parser) parseSharedConditionalAlternative(node *Node) {
 	}
 	p.advance()
 	alternative := p.parseControlledStatement()
-	setField(node, "alternative", alternative)
-	node.addChild(alternative)
+	p.setField(node, "alternative", alternative)
+	p.addChild(node, alternative)
 }
 
 func (p *parser) consumeLogicalLineCounting(count bool, depth *int) token.Token {

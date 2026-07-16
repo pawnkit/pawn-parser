@@ -47,6 +47,7 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 	}
 	p := &parser{source: source, toks: toks}
 	root := p.parseSourceFile()
+	p.buildDiagnosticCoverage()
 	p.ensureErrorDiagnostics(root)
 	sort.SliceStable(p.diagnostics, func(i, j int) bool {
 		if p.diagnostics[i].Range.Start != p.diagnostics[j].Range.Start {
@@ -72,10 +73,16 @@ type parser struct {
 	suppressTagCast bool
 	knownTags       map[string]struct{}
 
-	arena nodeArena
+	arena    nodeArena
+	fields   fieldArena
+	children childArena
+	trivia   parserTriviaArena
 
 	diagnostics []Diagnostic
 	depthError  bool
+
+	diagnosticRanges []diagnosticRange
+	diagnosticPoints []int
 }
 
 const (
@@ -113,6 +120,119 @@ type nodeArena struct {
 	next   int
 }
 
+type nodeArenaMark struct {
+	blocks int
+	next   int
+}
+
+type fieldArena struct {
+	blocks [][]nodeFieldData
+	next   int
+}
+
+func (a *fieldArena) alloc() *nodeFieldData {
+	if len(a.blocks) == 0 || a.next == len(a.blocks[len(a.blocks)-1]) {
+		size := 32
+		if len(a.blocks) != 0 {
+			size = min(len(a.blocks[len(a.blocks)-1])*2, 1024)
+		}
+		a.blocks = append(a.blocks, make([]nodeFieldData, size))
+		a.next = 0
+	}
+	value := &a.blocks[len(a.blocks)-1][a.next]
+	a.next++
+	return value
+}
+
+func (a *fieldArena) mark() nodeArenaMark {
+	return nodeArenaMark{blocks: len(a.blocks), next: a.next}
+}
+
+func (a *fieldArena) rewind(mark nodeArenaMark) {
+	if mark.blocks == 0 {
+		a.blocks = nil
+		a.next = 0
+		return
+	}
+	clear(a.blocks[mark.blocks-1][mark.next:])
+	a.blocks = a.blocks[:mark.blocks]
+	a.next = mark.next
+}
+
+type childArena struct {
+	blocks [][]*Node
+	next   int
+}
+
+type parserTriviaArena struct {
+	blocks [][]token.Trivia
+	next   int
+}
+
+func (a *parserTriviaArena) alloc(size int) []token.Trivia {
+	if size == 0 {
+		return nil
+	}
+	if len(a.blocks) == 0 || len(a.blocks[len(a.blocks)-1])-a.next < size {
+		blockSize := 64
+		if len(a.blocks) != 0 {
+			blockSize = min(len(a.blocks[len(a.blocks)-1])*2, 4096)
+		}
+		a.blocks = append(a.blocks, make([]token.Trivia, max(size, blockSize)))
+		a.next = 0
+	}
+	trivia := a.blocks[len(a.blocks)-1][a.next : a.next+size : a.next+size]
+	a.next += size
+	return trivia
+}
+
+func (a *parserTriviaArena) mark() nodeArenaMark {
+	return nodeArenaMark{blocks: len(a.blocks), next: a.next}
+}
+
+func (a *parserTriviaArena) rewind(mark nodeArenaMark) {
+	if mark.blocks == 0 {
+		a.blocks = nil
+		a.next = 0
+		return
+	}
+	clear(a.blocks[mark.blocks-1][mark.next:])
+	a.blocks = a.blocks[:mark.blocks]
+	a.next = mark.next
+}
+
+func (a *childArena) alloc(size int) []*Node {
+	if size == 0 {
+		return nil
+	}
+	if len(a.blocks) == 0 || len(a.blocks[len(a.blocks)-1])-a.next < size {
+		blockSize := 64
+		if len(a.blocks) != 0 {
+			blockSize = min(len(a.blocks[len(a.blocks)-1])*2, 4096)
+		}
+		a.blocks = append(a.blocks, make([]*Node, max(size, blockSize)))
+		a.next = 0
+	}
+	children := a.blocks[len(a.blocks)-1][a.next : a.next+size : a.next+size]
+	a.next += size
+	return children
+}
+
+func (a *childArena) mark() nodeArenaMark {
+	return nodeArenaMark{blocks: len(a.blocks), next: a.next}
+}
+
+func (a *childArena) rewind(mark nodeArenaMark) {
+	if mark.blocks == 0 {
+		a.blocks = nil
+		a.next = 0
+		return
+	}
+	clear(a.blocks[mark.blocks-1][mark.next:])
+	a.blocks = a.blocks[:mark.blocks]
+	a.next = mark.next
+}
+
 func (a *nodeArena) alloc() *Node {
 	if len(a.blocks) == 0 || a.next == len(a.blocks[len(a.blocks)-1]) {
 		size := initialNodeBlockSize
@@ -128,9 +248,36 @@ func (a *nodeArena) alloc() *Node {
 	return n
 }
 
+func (a *nodeArena) mark() nodeArenaMark {
+	return nodeArenaMark{blocks: len(a.blocks), next: a.next}
+}
+
+func (a *nodeArena) rewind(mark nodeArenaMark) {
+	if mark.blocks == 0 {
+		for i := range a.blocks {
+			clear(a.blocks[i])
+		}
+		a.blocks = nil
+		a.next = 0
+		return
+	}
+	clear(a.blocks[mark.blocks-1][mark.next:])
+	for i := mark.blocks; i < len(a.blocks); i++ {
+		clear(a.blocks[i])
+	}
+	a.blocks = a.blocks[:mark.blocks]
+	a.next = mark.next
+}
+
 // allocNode returns a pointer to a fresh zero Node from p's arena.
 func (p *parser) allocNode() *Node {
 	return p.arena.alloc()
+}
+
+func (p *parser) storeNode(value Node) *Node {
+	n := p.allocNode()
+	*n = value
+	return n
 }
 
 func (p *parser) missingSemiOK() bool {
@@ -224,25 +371,50 @@ func (p *parser) ensureErrorDiagnostics(root *Node) {
 }
 
 func (p *parser) diagnosticCovers(node *Node) bool {
+	point := sort.SearchInts(p.diagnosticPoints, node.Start)
+	if point < len(p.diagnosticPoints) && p.diagnosticPoints[point] <= node.End {
+		return true
+	}
+	rangeEnd := sort.Search(len(p.diagnosticRanges), func(i int) bool {
+		return p.diagnosticRanges[i].start >= node.End
+	})
+	return rangeEnd > 0 && p.diagnosticRanges[rangeEnd-1].maxEnd > node.Start
+}
+
+type diagnosticRange struct {
+	start  int
+	end    int
+	maxEnd int
+}
+
+func (p *parser) buildDiagnosticCoverage() {
 	for _, diagnostic := range p.diagnostics {
 		if diagnostic.Range.Start == diagnostic.Range.End {
-			if diagnostic.Range.Start >= node.Start && diagnostic.Range.Start <= node.End {
-				return true
-			}
+			p.diagnosticPoints = append(p.diagnosticPoints, diagnostic.Range.Start)
 			continue
 		}
-		if diagnostic.Range.Start < node.End && diagnostic.Range.End > node.Start {
-			return true
-		}
+		p.diagnosticRanges = append(p.diagnosticRanges, diagnosticRange{
+			start: diagnostic.Range.Start,
+			end:   diagnostic.Range.End,
+		})
 	}
-	return false
+	sort.Ints(p.diagnosticPoints)
+	sort.Slice(p.diagnosticRanges, func(i, j int) bool {
+		return p.diagnosticRanges[i].start < p.diagnosticRanges[j].start
+	})
+	maxEnd := 0
+	for i := range p.diagnosticRanges {
+		maxEnd = max(maxEnd, p.diagnosticRanges[i].end)
+		p.diagnosticRanges[i].maxEnd = maxEnd
+	}
 }
 
 func (p *parser) tokenAtOffset(offset int) token.Token {
-	for _, tok := range p.toks {
-		if tok.End.Offset >= offset {
-			return tok
-		}
+	idx := sort.Search(len(p.toks), func(i int) bool {
+		return p.toks[i].End.Offset >= offset
+	})
+	if idx < len(p.toks) {
+		return p.toks[idx]
 	}
 	return p.toks[len(p.toks)-1]
 }
@@ -275,7 +447,7 @@ func (p *parser) emitMissing(code DiagnosticCode, message string, expected ...to
 }
 
 func (p *parser) makeRecoveryNode(start, end int, found token.Token, grammar itemGrammar, exactRemove bool) *Node {
-	n := recoveryNode(p.source, start, end, found, grammar.recoveryContext, grammar.recoveryExpected)
+	n := p.recoveryNode(start, end, found, grammar.recoveryContext, grammar.recoveryExpected)
 	foundRange := tokenRange(found)
 	code := DiagnosticUnexpectedToken
 	recovery := suggestedRecovery(foundRange)

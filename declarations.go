@@ -33,9 +33,9 @@ func (p *parser) parseDeclaration() *Node {
 		if len(quals) > 0 {
 			start = quals[0].Start
 		}
-		n := &Node{Kind: KindRaw, Start: start, End: p.cur().Start.Offset, HasError: true}
+		n := p.storeNode(Node{Kind: KindRaw, Start: start, End: p.cur().Start.Offset, HasError: true})
 		for _, q := range quals {
-			n.addChild(q)
+			p.addChild(n, q)
 		}
 		return n
 	}
@@ -70,12 +70,12 @@ func (p *parser) parseOperatorMacroInvocation() *Node {
 			depth--
 		case token.Semicolon:
 			if depth == 0 {
-				return directiveSpan(p.source, KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
+				return p.directiveSpan(KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
 			}
 		default:
 		}
 	}
-	return directiveSpan(p.source, KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
+	return p.directiveSpan(KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
 }
 
 func (p *parser) canStartDeclarator() bool {
@@ -190,10 +190,10 @@ func (p *parser) parseFunctionName() *Node {
 		opKw := p.advance()
 		if isOverloadableOperator(p.cur().Kind) {
 			symTok := p.advance()
-			return &Node{
+			return p.storeNode(Node{
 				Kind: KindIdentifier, Start: opKw.Start.Offset, End: symTok.End.Offset,
 				Leading: opKw.LeadingTrivia, Trailing: symTok.TrailingTrivia,
-			}
+			})
 		}
 		name := p.newLeaf(KindIdentifier, opKw)
 		name.HasError = true
