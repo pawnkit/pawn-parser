@@ -80,7 +80,11 @@ func (p *parser[N, S]) parseOperatorMacroInvocation() N {
 
 func (p *parser[N, S]) canStartDeclarator() bool {
 	saved := p.pos
-	defer func() { p.pos = saved }()
+	mark := p.sink.Mark()
+	defer func() {
+		p.pos = saved
+		p.sink.Rewind(mark)
+	}()
 	p.parseOptionalTagPrefix()
 	return p.at(token.Identifier)
 }
@@ -111,7 +115,11 @@ func (p *parser[N, S]) annotationQualifierStart() bool {
 		return false
 	}
 	saved := p.pos
-	defer func() { p.pos = saved }()
+	mark := p.sink.Mark()
+	defer func() {
+		p.pos = saved
+		p.sink.Rewind(mark)
+	}()
 	p.advance()
 	p.parseArgumentList()
 	return p.peekIsFunctionDecl() || p.macroFunctionQualifierStart()
@@ -148,7 +156,11 @@ func isFunctionNameToken(kind token.Kind) bool {
 
 func (p *parser[N, S]) peekIsFunctionDecl() bool {
 	saved := p.pos
-	defer func() { p.pos = saved }()
+	mark := p.sink.Mark()
+	defer func() {
+		p.pos = saved
+		p.sink.Rewind(mark)
+	}()
 
 	p.parseOptionalTagPrefix()
 	p.parseDimensions()

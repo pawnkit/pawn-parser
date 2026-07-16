@@ -51,6 +51,54 @@ func TestParseCompactPreservesTreeShapeAndFields(t *testing.T) {
 	assertEquivalentNodes(t, pointerFile.Root, ParseCompact(source, ParseOptions{}).Expand().Root)
 }
 
+func TestCompactTreeContainsOnlyReachableNodes(t *testing.T) {
+	t.Parallel()
+	source := []byte("enum Color { Red, Green }\nforward Float:GetValue(Float:value);\n")
+	pointer := Parse(source)
+	compact := ParseForLinter(source)
+
+	pointerCount := 0
+	var countPointer func(*Node)
+	countPointer = func(node *Node) {
+		pointerCount++
+		for _, child := range node.Children {
+			countPointer(child)
+		}
+	}
+	countPointer(pointer.Root)
+	if len(compact.Tree.Nodes) != pointerCount {
+		t.Fatalf("compact nodes = %d, reachable pointer nodes = %d", len(compact.Tree.Nodes), pointerCount)
+	}
+	if cap(compact.Tree.Nodes) != len(compact.Tree.Nodes) {
+		t.Fatal("compact tree retained spare node capacity")
+	}
+	tokens := lexer.Tokenize(source)
+	sink := newCompactNodeSink(len(tokens))
+	internal := &parser[uint32, compactNodeSink]{source: source, toks: tokens, sink: sink}
+	internal.parseSourceFile()
+	if allocated := len(sink.builder.nodes) - 1; allocated != pointerCount {
+		t.Fatalf("compact arena nodes = %d, reachable pointer nodes = %d", allocated, pointerCount)
+	}
+
+	reached := make([]bool, len(compact.Tree.Nodes))
+	stack := []uint32{compact.Tree.Root}
+	for len(stack) != 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if node >= compactUint(len(reached)) || reached[node] {
+			continue
+		}
+		reached[node] = true
+		stack = append(stack, compact.Tree.ChildIndices(node)...)
+	}
+	for node, ok := range reached {
+		if !ok {
+			t.Fatalf("compact node %d is unreachable", node)
+		}
+	}
+	assertEquivalentNodes(t, pointer.Root, ParseCompact(source, ParseOptions{}).Expand().Root)
+}
+
 func TestParseCompactDiagnosticsMatchPointerParser(t *testing.T) {
 	t.Parallel()
 	for _, source := range [][]byte{

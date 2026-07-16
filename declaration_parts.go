@@ -7,11 +7,13 @@ func (p *parser[N, S]) parseStateSelector() N {
 		return p.sink.Nil()
 	}
 	startIdx := p.pos
+	mark := p.sink.Mark()
 	lt := p.advance()
 	node := p.sink.Store(Node{Kind: KindTaggedType, Start: lt.Start.Offset, Leading: lt.LeadingTrivia})
 	for !p.at(token.Gt) {
 		if p.curKind() != token.Identifier && !isKeywordToken(p.curKind()) {
 			p.pos = startIdx
+			p.sink.Rewind(mark)
 			return p.rawStateSelector()
 		}
 		p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, p.advance()))
@@ -23,6 +25,7 @@ func (p *parser[N, S]) parseStateSelector() N {
 	}
 	if !p.at(token.Gt) {
 		p.pos = startIdx
+		p.sink.Rewind(mark)
 		return p.rawStateSelector()
 	}
 	gt := p.advance()
@@ -83,11 +86,13 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 	}
 	if p.curKind() == token.LBrace {
 		saved := p.pos
+		mark := p.sink.Mark()
 		lb := p.advance()
 		node := p.sink.Store(Node{Kind: KindTaggedType, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		for {
 			if !p.at(token.Identifier) {
 				p.pos = saved
+				p.sink.Rewind(mark)
 				return p.sink.Nil()
 			}
 			p.sink.AddChild(node, p.sink.NewLeaf(KindIdentifier, p.advance()))
@@ -99,11 +104,13 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		}
 		if !p.at(token.RBrace) {
 			p.pos = saved
+			p.sink.Rewind(mark)
 			return p.sink.Nil()
 		}
 		p.advance()
 		if !p.at(token.Colon) {
 			p.pos = saved
+			p.sink.Rewind(mark)
 			return p.sink.Nil()
 		}
 		colon := p.advance()

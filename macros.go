@@ -73,6 +73,7 @@ func (p *parser[N, S]) consumeRawDirectiveLineFrom(startOffset int, kind Kind, l
 
 func (p *parser[N, S]) parseMacroParamList() (N, bool) {
 	startIdx := p.pos
+	mark := p.sink.Mark()
 	lp := p.advance() // '('
 	params := p.sink.Store(Node{Kind: KindParameterList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 
@@ -86,6 +87,7 @@ func (p *parser[N, S]) parseMacroParamList() (N, bool) {
 	for {
 		if !p.at(token.MacroParam) && !p.at(token.Identifier) {
 			p.pos = startIdx
+			p.sink.Rewind(mark)
 			return p.sink.Nil(), false
 		}
 		tok := p.advance()
@@ -102,6 +104,7 @@ func (p *parser[N, S]) parseMacroParamList() (N, bool) {
 			return params, true
 		}
 		p.pos = startIdx
+		p.sink.Rewind(mark)
 		return p.sink.Nil(), false
 	}
 }
@@ -122,8 +125,10 @@ func (p *parser[N, S]) parseMacroBody(bodyStartIdx, bodyEndIdx, bodyStart, bodyE
 	if expr, ok := p.tryParseAll(bodyToks, false, (*parser[N, S]).parseExpression); ok {
 		return expr
 	}
+	mark := p.sink.Mark()
 	if stmt, ok := p.tryParseAll(bodyToks, true, (*parser[N, S]).parseStatement); ok {
 		if p.childrenHaveMissingSemicolon(stmt) {
+			p.sink.Rewind(mark)
 			return raw()
 		}
 		return stmt

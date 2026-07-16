@@ -355,25 +355,37 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 	if root == 0 {
 		return CompactTree{}
 	}
+	remap, nodeCount, childCount, fieldCount := s.reachableNodes(root)
+	nodes := s.builder.records[1 : nodeCount+1 : nodeCount+1]
 	tree := CompactTree{
-		Nodes:    s.builder.records[1:len(s.builder.records):len(s.builder.records)],
-		Children: make([]uint32, s.builder.edgeCount),
-		Fields:   make([]CompactField, s.builder.fieldCount),
+		Nodes:    nodes,
+		Children: make([]uint32, childCount),
+		Fields:   make([]CompactField, fieldCount),
 	}
 	childPos, fieldPos := 0, 0
 	for id := uint32(1); id < compactUint(len(s.builder.nodes)); id++ {
+		mapped := remap[id]
+		if mapped == 0 {
+			continue
+		}
 		node := s.node(id)
-		index := id - 1
+		index := mapped - 1
+		if index+1 != id {
+			tree.Nodes[index] = s.builder.records[id]
+		}
 		children := node.children
 		childStart := compactUint(childPos)
 		for _, child := range children {
-			tree.Children[childPos] = child - 1
+			tree.Children[childPos] = remap[child] - 1
 			childPos++
 		}
 
 		fieldStart := compactUint(fieldPos)
 		for _, entry := range node.fields {
-			tree.Fields[fieldPos] = CompactField{ID: entry.id, Node: entry.node - 1}
+			if entry.node >= compactUint(len(remap)) || remap[entry.node] == 0 {
+				continue
+			}
+			tree.Fields[fieldPos] = CompactField{ID: entry.id, Node: remap[entry.node] - 1}
 			fieldPos++
 		}
 		if buildError := s.error(id); buildError != nil {
@@ -390,6 +402,37 @@ func (s compactNodeSink) tree(root uint32) CompactTree {
 		record.FieldStart = fieldStart
 		record.FieldCount = compactUint(fieldPos) - fieldStart
 	}
-	tree.Root = root - 1
+	tree.Root = remap[root] - 1
 	return tree
+}
+
+func (s compactNodeSink) reachableNodes(root uint32) ([]uint32, int, int, int) {
+	remap := make([]uint32, len(s.builder.nodes))
+	stack := []uint32{root}
+	for len(stack) != 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if id == 0 || id >= compactUint(len(remap)) || remap[id] != 0 {
+			continue
+		}
+		remap[id] = ^uint32(0)
+		stack = append(stack, s.node(id).children...)
+	}
+
+	nodeCount, childCount, fieldCount := 0, 0, 0
+	for id := uint32(1); id < compactUint(len(s.builder.nodes)); id++ {
+		if remap[id] == 0 {
+			continue
+		}
+		nodeCount++
+		remap[id] = compactUint(nodeCount)
+		node := s.node(id)
+		childCount += len(node.children)
+		for _, field := range node.fields {
+			if field.node < compactUint(len(remap)) && remap[field.node] != 0 {
+				fieldCount++
+			}
+		}
+	}
+	return remap, nodeCount, childCount, fieldCount
 }

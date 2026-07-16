@@ -268,9 +268,11 @@ func (p *parser[N, S]) rawConditionalRegion() N {
 		}
 		last = p.consumeLogicalLineCounting(allLive(), &bracketDepth)
 		if pastEndif {
+			mark := p.sink.Mark()
 			if node := p.finishSharedConditional(startOffset, leading, last, bracketDepth); node != p.sink.Nil() {
 				return node
 			}
+			p.sink.Rewind(mark)
 			if bracketDepth <= 0 {
 				break
 			}

@@ -18,11 +18,13 @@ func (p *parser[N, S]) canStartUnbracedFunctionBody() bool {
 func (p *parser[N, S]) parseUnbracedFunctionBody() N {
 	if p.at(token.Hash) && p.peekDirectiveKeyword() == dirIf {
 		startPos := p.pos
+		mark := p.sink.Mark()
 		region, ok := p.trySingleStatementConditional()
 		if ok {
 			return region
 		}
 		p.pos = startPos
+		p.sink.Rewind(mark)
 		return p.rawConditionalRegion()
 	}
 	return p.parseStatement()
