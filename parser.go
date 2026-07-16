@@ -45,7 +45,7 @@ func ParseTokens(source []byte, toks []token.Token) *File {
 			End:   end,
 		})
 	}
-	p := &parser{source: source, toks: toks, arena: make([]Node, 0, len(source)/4+16)}
+	p := &parser{source: source, toks: toks}
 	root := p.parseSourceFile()
 	p.ensureErrorDiagnostics(root)
 	sort.SliceStable(p.diagnostics, func(i, j int) bool {
@@ -72,7 +72,7 @@ type parser struct {
 	suppressTagCast bool
 	knownTags       map[string]struct{}
 
-	arena []Node
+	arena nodeArena
 
 	diagnostics []Diagnostic
 	depthError  bool
@@ -101,19 +101,36 @@ func (p *parser) exitDepth() {
 	p.depth--
 }
 
+const (
+	initialNodeBlockSize = 64
+	maxNodeBlockSize     = 1024
+)
+
+// nodeArena stores nodes in independent blocks. Blocks are never resized, so
+// pointers returned from alloc remain valid for the lifetime of the tree.
+type nodeArena struct {
+	blocks [][]Node
+	next   int
+}
+
+func (a *nodeArena) alloc() *Node {
+	if len(a.blocks) == 0 || a.next == len(a.blocks[len(a.blocks)-1]) {
+		size := initialNodeBlockSize
+		if len(a.blocks) > 0 {
+			size = min(len(a.blocks[len(a.blocks)-1])*2, maxNodeBlockSize)
+		}
+		a.blocks = append(a.blocks, make([]Node, size))
+		a.next = 0
+	}
+	block := a.blocks[len(a.blocks)-1]
+	n := &block[a.next]
+	a.next++
+	return n
+}
+
 // allocNode returns a pointer to a fresh zero Node from p's arena.
 func (p *parser) allocNode() *Node {
-	if len(p.arena) == cap(p.arena) {
-		newCap := 256
-		if c := cap(p.arena); c > 0 {
-			newCap = c * 2
-		}
-		grown := make([]Node, len(p.arena), newCap)
-		copy(grown, p.arena)
-		p.arena = grown
-	}
-	p.arena = p.arena[:len(p.arena)+1]
-	return &p.arena[len(p.arena)-1]
+	return p.arena.alloc()
 }
 
 func (p *parser) missingSemiOK() bool {
