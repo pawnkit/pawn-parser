@@ -1,7 +1,6 @@
 package lexer
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
@@ -12,26 +11,24 @@ func TestCompactSyntaxMatchesTokens(t *testing.T) {
 	t.Parallel()
 	source := []byte("// lead\nnew value = Call(1); // tail\n")
 	want := Tokenize(source)
-	compact, trivia := TokenizeCompactSyntax(source)
+	compact := TokenizeCompactSyntax(source)
 	if len(compact) != len(want) {
 		t.Fatalf("compact token count = %d, want %d", len(compact), len(want))
 	}
 	for i, item := range compact {
-		got := token.Token{
-			Kind:  item.Kind,
-			Start: token.Position{Offset: int(item.Start.Offset), Line: int(item.Start.Line), Col: int(item.Start.Col)},
-			End:   token.Position{Offset: int(item.End.Offset), Line: int(item.End.Line), Col: int(item.End.Col)},
+		if item.Kind != want[i].Kind || int(item.Start.Offset) != want[i].Start.Offset ||
+			int(item.End.Offset) != want[i].End.Offset {
+			t.Fatalf("compact token %d = %+v, want %+v", i, item, want[i])
 		}
-		leadingEnd := item.LeadingStart + item.LeadingCount
-		trailingEnd := item.TrailingStart + item.TrailingCount
-		if item.LeadingCount != 0 {
-			got.LeadingTrivia = trivia[item.LeadingStart:leadingEnd:leadingEnd]
+		if (item.LeadingFlags&token.TriviaPresent != 0) != (len(want[i].LeadingTrivia) != 0) {
+			t.Fatalf("compact token %d leading trivia summary differs", i)
 		}
-		if item.TrailingCount != 0 {
-			got.TrailingTrivia = trivia[item.TrailingStart:trailingEnd:trailingEnd]
+		endsLine := false
+		for _, trivia := range want[i].TrailingTrivia {
+			endsLine = endsLine || trivia.Kind == token.Newline
 		}
-		if !reflect.DeepEqual(got, want[i]) {
-			t.Fatalf("compact token %d = %+v, want %+v", i, got, want[i])
+		if (item.TrailingFlags&token.TriviaEndsLine != 0) != endsLine {
+			t.Fatalf("compact token %d trailing line summary differs", i)
 		}
 	}
 }

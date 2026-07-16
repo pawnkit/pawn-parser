@@ -118,8 +118,8 @@ func (t *CompactTree) Field(node uint32, name string) (uint32, bool) {
 // ParseCompact parses source into a compact CST.
 func ParseCompact(source []byte, options ParseOptions) *CompactFile {
 	if options.DiscardTokens {
-		toks, trivia := lexer.TokenizeCompactSyntax(source)
-		return parseCompact(source, newCompactParserTokens(toks, trivia), options, nil, nil)
+		toks := lexer.TokenizeCompactSyntax(source)
+		return parseCompact(source, newCompactParserTokens(toks, nil), options, nil, nil)
 	}
 	toks, compact, trivia := lexer.TokenizeCompact(source, !options.DiscardTrivia)
 	return parseTokensCompact(source, toks, options, compact, trivia)

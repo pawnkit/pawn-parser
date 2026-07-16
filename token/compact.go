@@ -12,7 +12,20 @@ type CompactToken struct {
 	TrailingStart uint32
 	TrailingCount uint32
 	Origin        uint32
+
+	LeadingFlags  TriviaFlags
+	TrailingFlags TriviaFlags
 }
+
+// TriviaFlags summarizes trivia without retaining its spans.
+type TriviaFlags uint8
+
+const (
+	// TriviaPresent indicates that trivia exists.
+	TriviaPresent TriviaFlags = 1 << iota
+	// TriviaEndsLine indicates that trivia contains a newline.
+	TriviaEndsLine
+)
 
 // CompactTrivia stores one trivia span.
 type CompactTrivia struct {

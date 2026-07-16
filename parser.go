@@ -139,6 +139,11 @@ func newCompactParserTokens(tokens []token.CompactToken, trivia []token.Trivia) 
 	return parserTokens{compact: tokens, trivia: trivia}
 }
 
+var (
+	presentTrivia = [...]token.Trivia{{Kind: token.Whitespace}}
+	lineTrivia    = [...]token.Trivia{{Kind: token.Newline}}
+)
+
 func (t parserTokens) len() int {
 	if t.full == nil {
 		return len(t.compact)
@@ -150,11 +155,15 @@ func (t parserTokens) at(index int) token.Token {
 	if t.full == nil {
 		item := t.compact[index]
 		return token.Token{
-			Kind:           item.Kind,
-			Start:          token.Position{Offset: int(item.Start.Offset), Line: int(item.Start.Line), Col: int(item.Start.Col)},
-			End:            token.Position{Offset: int(item.End.Offset), Line: int(item.End.Line), Col: int(item.End.Col)},
-			LeadingTrivia:  compactParserTrivia(t.trivia, item.LeadingStart, item.LeadingCount),
-			TrailingTrivia: compactParserTrivia(t.trivia, item.TrailingStart, item.TrailingCount),
+			Kind:  item.Kind,
+			Start: token.Position{Offset: int(item.Start.Offset), Line: int(item.Start.Line), Col: int(item.Start.Col)},
+			End:   token.Position{Offset: int(item.End.Offset), Line: int(item.End.Line), Col: int(item.End.Col)},
+			LeadingTrivia: compactParserTrivia(
+				t.trivia, item.LeadingStart, item.LeadingCount, item.LeadingFlags,
+			),
+			TrailingTrivia: compactParserTrivia(
+				t.trivia, item.TrailingStart, item.TrailingCount, item.TrailingFlags,
+			),
 		}
 	}
 	return t.full[index]
@@ -184,7 +193,16 @@ func (t parserTokens) copyTo(dst []token.Token, start, end int) {
 	copy(dst, t.full[start:end])
 }
 
-func compactParserTrivia(trivia []token.Trivia, start, count uint32) []token.Trivia {
+func compactParserTrivia(trivia []token.Trivia, start, count uint32, flags token.TriviaFlags) []token.Trivia {
+	if trivia == nil {
+		if flags&token.TriviaEndsLine != 0 {
+			return lineTrivia[:]
+		}
+		if flags&token.TriviaPresent != 0 {
+			return presentTrivia[:]
+		}
+		return nil
+	}
 	if count == 0 {
 		return nil
 	}
