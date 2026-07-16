@@ -161,7 +161,7 @@ func parseCompact(
 	retainedTokens []CompactToken,
 	retainedTrivia []CompactTrivia,
 ) *CompactFile {
-	sink := newCompactNodeSink(toks.len())
+	sink := newCompactNodeSink(toks.len(), !options.DiscardTrivia)
 	p := &parser[uint32, compactNodeSink]{
 		source: source, toks: toks, sink: sink,
 	}

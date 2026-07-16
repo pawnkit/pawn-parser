@@ -23,14 +23,15 @@ type compactBuildField struct {
 }
 
 type compactBuilder struct {
-	nodes      []compactBuildNode
-	records    []CompactNode
-	edgeCount  int
-	fieldCount int
-	children   compactUintArena
-	fields     compactFieldArena
-	trivia     parserTriviaArena
-	errors     []compactBuildError
+	nodes        []compactBuildNode
+	records      []CompactNode
+	edgeCount    int
+	fieldCount   int
+	children     compactUintArena
+	fields       compactFieldArena
+	trivia       parserTriviaArena
+	errors       []compactBuildError
+	retainTrivia bool
 }
 
 type compactArenaMark struct {
@@ -121,11 +122,11 @@ type compactNodeSink struct{ builder *compactBuilder }
 
 var _ nodeSink[uint32] = compactNodeSink{}
 
-func newCompactNodeSink(tokenCount int) compactNodeSink {
+func newCompactNodeSink(tokenCount int, retainTrivia bool) compactNodeSink {
 	capacity := tokenCount*2/3 + 64
 	return compactNodeSink{builder: &compactBuilder{
 		nodes: make([]compactBuildNode, 1, capacity), records: make([]CompactNode, 1, capacity),
-		errors: []compactBuildError{{}},
+		errors: []compactBuildError{{}}, retainTrivia: retainTrivia,
 	}}
 }
 
@@ -143,7 +144,9 @@ func (s compactNodeSink) Store(value Node) uint32 {
 		TokenKind: value.Tok.Kind, TokenStart: compactUint(value.Tok.Start.Offset), TokenEnd: compactUint(value.Tok.End.Offset),
 		HasError: value.HasError, MissingSemi: value.MissingSemi, HasRaw: value.Raw != nil,
 	})
-	*s.node(id) = compactBuildNode{leading: value.Leading, trailing: value.Trailing}
+	if s.builder.retainTrivia {
+		*s.node(id) = compactBuildNode{leading: value.Leading, trailing: value.Trailing}
+	}
 	if value.ErrorMessage != "" || len(value.ErrorExpected) != 0 || value.ErrorOffset != 0 || value.ErrorFound != token.Invalid {
 		*s.ensureError(id) = compactBuildError{
 			message: value.ErrorMessage, expected: value.ErrorExpected,
@@ -211,15 +214,21 @@ func (s compactNodeSink) SetToken(n uint32, value token.Token) {
 	v := s.record(n)
 	v.TokenKind, v.TokenStart, v.TokenEnd = value.Kind, compactUint(value.Start.Offset), compactUint(value.End.Offset)
 }
-func (s compactNodeSink) Start(n uint32) int                        { return int(s.record(n).Start) }
-func (s compactNodeSink) SetStart(n uint32, value int)              { s.record(n).Start = compactUint(value) }
-func (s compactNodeSink) End(n uint32) int                          { return int(s.record(n).End) }
-func (s compactNodeSink) SetEnd(n uint32, value int)                { s.record(n).End = compactUint(value) }
-func (s compactNodeSink) Leading(n uint32) []token.Trivia           { return s.node(n).leading }
-func (s compactNodeSink) SetLeading(n uint32, value []token.Trivia) { s.node(n).leading = value }
-func (s compactNodeSink) Trailing(n uint32) []token.Trivia          { return s.node(n).trailing }
+func (s compactNodeSink) Start(n uint32) int              { return int(s.record(n).Start) }
+func (s compactNodeSink) SetStart(n uint32, value int)    { s.record(n).Start = compactUint(value) }
+func (s compactNodeSink) End(n uint32) int                { return int(s.record(n).End) }
+func (s compactNodeSink) SetEnd(n uint32, value int)      { s.record(n).End = compactUint(value) }
+func (s compactNodeSink) Leading(n uint32) []token.Trivia { return s.node(n).leading }
+func (s compactNodeSink) SetLeading(n uint32, value []token.Trivia) {
+	if s.builder.retainTrivia {
+		s.node(n).leading = value
+	}
+}
+func (s compactNodeSink) Trailing(n uint32) []token.Trivia { return s.node(n).trailing }
 func (s compactNodeSink) SetTrailing(n uint32, value []token.Trivia) {
-	s.node(n).trailing = value
+	if s.builder.retainTrivia {
+		s.node(n).trailing = value
+	}
 }
 func (s compactNodeSink) HasError(n uint32) bool              { return s.record(n).HasError }
 func (s compactNodeSink) SetHasError(n uint32, value bool)    { s.record(n).HasError = value }
@@ -290,7 +299,7 @@ func (s compactNodeSink) SetChildren(n uint32, children []uint32) {
 	if len(children) != 0 {
 		last := children[len(children)-1]
 		s.SetEnd(n, s.End(last))
-		node.trailing = s.Trailing(last)
+		s.SetTrailing(n, s.Trailing(last))
 	}
 }
 
@@ -302,7 +311,7 @@ func (s compactNodeSink) AddChild(n, child uint32) {
 	node.children = s.builder.children.append(node.children, child)
 	s.builder.edgeCount++
 	s.SetEnd(n, s.End(child))
-	node.trailing = s.Trailing(child)
+	s.SetTrailing(n, s.Trailing(child))
 	if s.HasError(child) {
 		s.SetHasError(n, true)
 	}
@@ -346,6 +355,8 @@ func (s compactNodeSink) Rewind(mark sinkMark) {
 	s.builder.fields.rewind(mark.fields)
 	s.builder.trivia.rewind(mark.trivia)
 }
+
+func (s compactNodeSink) RetainsTrivia() bool { return s.builder.retainTrivia }
 
 func (s compactNodeSink) AllocTrivia(size int) []token.Trivia {
 	return s.builder.trivia.alloc(size)

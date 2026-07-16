@@ -46,6 +46,7 @@ type nodeSink[N comparable] interface {
 
 	Mark() sinkMark
 	Rewind(sinkMark)
+	RetainsTrivia() bool
 	AllocTrivia(int) []token.Trivia
 }
 
@@ -142,6 +143,8 @@ func (s pointerNodeSink) Mark() sinkMark {
 func (s pointerNodeSink) Rewind(mark sinkMark) {
 	s.storage.rewind(mark.storage)
 }
+
+func (pointerNodeSink) RetainsTrivia() bool { return true }
 
 func (s pointerNodeSink) AllocTrivia(size int) []token.Trivia {
 	return s.storage.trivia.alloc(size)

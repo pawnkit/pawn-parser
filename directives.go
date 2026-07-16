@@ -352,7 +352,7 @@ func (p *parser[N, S]) parseBracketedList(kind Kind, open token.Token, closeTok 
 }
 
 func (p *parser[N, S]) mergeCommaTrivia(item N, comma token.Token) {
-	if item == p.sink.Nil() {
+	if item == p.sink.Nil() || !p.sink.RetainsTrivia() {
 		return
 	}
 	if len(comma.LeadingTrivia) == 0 && len(comma.TrailingTrivia) == 0 {

@@ -80,7 +80,7 @@ func TestCompactTreeContainsOnlyReachableNodes(t *testing.T) {
 		t.Fatal("compact tree retained spare node capacity")
 	}
 	tokens := lexer.Tokenize(source)
-	sink := newCompactNodeSink(len(tokens))
+	sink := newCompactNodeSink(len(tokens), false)
 	internal := &parser[uint32, compactNodeSink]{source: source, toks: newParserTokens(tokens), sink: sink}
 	internal.parseSourceFile()
 	if allocated := len(sink.builder.nodes) - 1; allocated != pointerCount {
