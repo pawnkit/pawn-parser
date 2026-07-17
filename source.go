@@ -5,9 +5,6 @@ import (
 	"math"
 )
 
-// FileID identifies a logical source file in a FileSet.
-type FileID uint32
-
 // SourceFile contains a logical source file and its stable ID.
 type SourceFile struct {
 	ID   FileID
