@@ -17,20 +17,17 @@ type corpusFixtureMeta struct {
 	} `json:"expected"`
 }
 
-// knownConformanceGaps documents fixture/parser mismatches found by this
-// suite that need a human decision (fix the parser, or the fixture) rather
-// than a silent pass or a permanently red baseline. See core Phase 0 report.
+// knownConformanceGaps records reviewed fixture/parser mismatches.
 var knownConformanceGaps = map[string]string{
 	"syntax.invalid.missing_semicolon": "pawn-parser treats a missing statement terminator as recoverable " +
 		"(tracked via SyntaxNode.MissingSemicolon()), not a File.Diagnostics entry; fixture expects a hard diagnostic",
 	"syntax.invalid.unclosed_preprocessor_if": "pawn-parser does not currently validate #if/#endif balance at EOF",
 }
 
-// TestCorpusConformance runs pawn-parser against the shared pawn-corpus
-// syntax fixtures, per pawn-corpus/docs/adapter-protocol.md. It skips if no
-// sibling pawn-corpus checkout is found, since CI for pawn-parser alone
-// does not require one.
+// TestCorpusConformance checks the shared syntax fixtures when available.
 func TestCorpusConformance(t *testing.T) {
+	t.Parallel()
+
 	corpusRoot := findSiblingRepo(t, "pawn-corpus")
 	if corpusRoot == "" {
 		t.Skip("no sibling pawn-corpus checkout found")
@@ -52,7 +49,6 @@ func runCorpusDir(t *testing.T, dir string, wantValid bool) {
 	}
 
 	for _, metaPath := range metaFiles {
-		metaPath := metaPath
 		sourcePath := strings.TrimSuffix(metaPath, ".meta.json")
 
 		meta, err := readFixtureMeta(metaPath)
@@ -62,6 +58,8 @@ func runCorpusDir(t *testing.T, dir string, wantValid bool) {
 		}
 
 		t.Run(meta.ID, func(t *testing.T) {
+			t.Parallel()
+
 			if meta.Expected.Result == "pending" {
 				t.Skip("expected.result is pending")
 			}
@@ -69,7 +67,7 @@ func runCorpusDir(t *testing.T, dir string, wantValid bool) {
 				t.Skip("known conformance gap: " + reason)
 			}
 
-			src, err := os.ReadFile(sourcePath)
+			src, err := os.ReadFile(sourcePath) //nolint:gosec // Path comes from the corpus walk.
 			if err != nil {
 				t.Fatalf("read %s: %v", sourcePath, err)
 			}
@@ -104,7 +102,7 @@ func findMetaFiles(dir string) ([]string, error) {
 }
 
 func readFixtureMeta(path string) (corpusFixtureMeta, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // Path comes from the corpus walk.
 	if err != nil {
 		return corpusFixtureMeta{}, err
 	}
@@ -117,9 +115,7 @@ func readFixtureMeta(path string) (corpusFixtureMeta, error) {
 	return meta, nil
 }
 
-// findSiblingRepo looks for ../<name> next to the pawn-parser module root,
-// matching the local-checkout layout this workspace uses; CI environments
-// wire pawn-corpus in explicitly per the adapter protocol instead.
+// findSiblingRepo checks the standard local workspace layout.
 func findSiblingRepo(t *testing.T, name string) string {
 	t.Helper()
 

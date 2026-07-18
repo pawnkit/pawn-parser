@@ -1,6 +1,10 @@
 package parser
 
-import "github.com/pawnkit/pawn-parser/token"
+import (
+	"slices"
+
+	"github.com/pawnkit/pawn-parser/token"
+)
 
 type itemGrammar[N comparable, S nodeSink[N]] struct {
 	parseItem                 func(p *parser[N, S]) N
@@ -252,8 +256,7 @@ func (p *parser[N, S]) attachSharedAlternative(conditional N) {
 
 func (p *parser[N, S]) trailingBranchIf(branch N) N {
 	children := p.sink.Children(branch)
-	for i := len(children) - 1; i >= 0; i-- {
-		child := children[i]
+	for _, child := range slices.Backward(children) {
 		if p.sink.Kind(child).IsDirective() {
 			continue
 		}
@@ -266,8 +269,7 @@ func (p *parser[N, S]) trailingBranchIf(branch N) N {
 }
 
 func trailingBranchIf(branch *Node) *Node {
-	for i := len(branch.Children) - 1; i >= 0; i-- {
-		child := branch.Children[i]
+	for _, child := range slices.Backward(branch.Children) {
 		if child.Kind.IsDirective() {
 			continue
 		}

@@ -37,9 +37,9 @@ func main() {
 
 ## Packages
 
-- `github.com/pawnkit/pawn-parser` — Pawn CST parser and node kinds.
-- `github.com/pawnkit/pawn-parser/lexer` — standalone tokenizer.
-- `github.com/pawnkit/pawn-parser/token` — token kinds, positions, and trivia.
+- `github.com/pawnkit/pawn-parser`: Pawn CST parser and node kinds
+- `github.com/pawnkit/pawn-parser/lexer`: standalone tokenizer
+- `github.com/pawnkit/pawn-parser/token`: token kinds, positions, and trivia
 
 ## Parse profiles
 
@@ -70,3 +70,8 @@ for declarations.Next() {
 Formatters should use `ProfileLossless`. Syntax token handles then expose
 retained leading trivia, trailing trivia, and origin chains without expanding
 the pointer CST.
+
+## Contributing
+
+Grammar fixes and small compatibility cases are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the test and review expectations.

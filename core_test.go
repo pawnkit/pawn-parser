@@ -8,6 +8,8 @@ import (
 )
 
 func TestByteRangeSpanRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	r := ByteRange{Start: 3, End: 9}
 	file := source.FileID(1)
 
@@ -22,6 +24,8 @@ func TestByteRangeSpanRoundTrip(t *testing.T) {
 }
 
 func TestDiagnosticToCoreSafeFix(t *testing.T) {
+	t.Parallel()
+
 	file := source.FileID(1)
 	d := Diagnostic{
 		Code:    DiagnosticMissingToken,
@@ -52,6 +56,8 @@ func TestDiagnosticToCoreSafeFix(t *testing.T) {
 }
 
 func TestDiagnosticToCoreReviewFix(t *testing.T) {
+	t.Parallel()
+
 	file := source.FileID(1)
 	d := Diagnostic{
 		Code:    DiagnosticSyntaxError,
@@ -72,6 +78,8 @@ func TestDiagnosticToCoreReviewFix(t *testing.T) {
 }
 
 func TestDiagnosticToCoreNoRecovery(t *testing.T) {
+	t.Parallel()
+
 	file := source.FileID(1)
 	d := Diagnostic{
 		Code:    DiagnosticUnrecoverable,

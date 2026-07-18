@@ -8,9 +8,7 @@ import (
 	"github.com/pawnkit/pawnkit-core/textedit"
 )
 
-// FileID is an alias so FileIDs from FileSet interoperate with pawnkit-core
-// (source.FileID and parser.FileID have always shared the same uint32
-// shape; this makes it official rather than coincidental).
+// FileID is the shared PawnKit source identifier.
 type FileID = source.FileID
 
 // Span converts r into a pawnkit-core source.Span for file.
@@ -23,10 +21,8 @@ func ByteRangeFromSpan(s source.Span) ByteRange {
 	return ByteRange{Start: int(s.Start), End: int(s.End)}
 }
 
-// ToCore converts d into the shared diagnostic.Diagnostic interchange
-// format used across PawnKit tools (CLI JSON, SARIF, editor protocols).
-// Severity is always SeverityError: the parser does not yet classify
-// diagnostics by severity.
+// ToCore converts d to the shared diagnostic format.
+// Parser diagnostics currently use error severity.
 func (d Diagnostic) ToCore(file source.FileID) diagnostic.Diagnostic {
 	cd := diagnostic.New(
 		"pawn-parser:"+string(d.Code),

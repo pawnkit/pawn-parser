@@ -255,6 +255,8 @@ func equivalentNodeHeader(want, got *Node) bool {
 func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	t.Parallel()
 
+	const macroName = "VALUE"
+
 	source := []byte("value")
 	tokens := lexer.Tokenize(source)
 	parent := &token.Origin{
@@ -262,7 +264,7 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	}
 	tokens[0].Origin = &token.Origin{
 		Span:  token.Span{File: 2, Start: token.Position{Offset: 10}, End: token.Position{Offset: 15}},
-		Macro: "VALUE", Parent: parent,
+		Macro: macroName, Parent: parent,
 	}
 
 	file := ParseTokensCompact(source, tokens, ParseOptions{})
@@ -270,7 +272,7 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	if origin == 0 || file.Origins[origin].File != 2 {
 		t.Fatal("token origin was not preserved")
 	}
-	if file.MacroNames[file.Origins[origin].Macro] != "VALUE" {
+	if file.MacroNames[file.Origins[origin].Macro] != macroName {
 		t.Fatal("origin macro was not preserved")
 	}
 	var identifier SyntaxNode
@@ -281,7 +283,7 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 		}
 	}
 	syntaxOrigin, ok := identifier.Token().Origin()
-	if !ok || syntaxOrigin.Macro() != "VALUE" || syntaxOrigin.Span().File != 2 {
+	if !ok || syntaxOrigin.Macro() != macroName || syntaxOrigin.Span().File != 2 {
 		t.Fatal("syntax token origin was not preserved")
 	}
 	if syntaxParent, ok := syntaxOrigin.Parent(); !ok || syntaxParent.Span().File != 1 {
@@ -293,7 +295,7 @@ func TestParseTokensCompactPreservesOrigins(t *testing.T) {
 	}
 
 	expanded := file.Expand()
-	if expanded.Tokens[0].Origin == nil || expanded.Tokens[0].Origin.Macro != "VALUE" {
+	if expanded.Tokens[0].Origin == nil || expanded.Tokens[0].Origin.Macro != macroName {
 		t.Fatal("expanded token origin was not preserved")
 	}
 	if expanded.Tokens[0].Origin.Parent == nil || expanded.Tokens[0].Origin.Parent.Span.File != 1 {

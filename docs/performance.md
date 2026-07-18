@@ -28,7 +28,7 @@ Measured on a development machine (AMD Ryzen 7 5800X3D); treat as relative, not 
 | `ParseCompactLargeFile` | 77.3 ms | 23.2 MB/s | 37.6 MB | 97780 |
 | `ParseCompactRetainedLargeFile` | 108.6 ms | 16.5 MB/s | 122.9 MB | 97850 |
 | `TokensOnlyLargeFile` | 33.6 ms | 53.4 MB/s | 32.8 MB | 42 |
-| `TypedSyntaxTraversal` | 46.1 µs | – | 0 | 0 |
+| `TypedSyntaxTraversal` | 46.1 µs | n/a | 0 | 0 |
 
 `ParseCompactLargeFile` is the cheapest full-parse path; the `*Retained*`
 and generic-node variants trade allocations for retained CST detail.
