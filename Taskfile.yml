@@ -24,7 +24,7 @@ tasks:
   fmt-check:
     desc: Fail if any file is not formatted
     cmds:
-      - test -z "$(gofmt -l .)"
+      - test -z "$(gofumpt -l .)"
 
   lint:
     desc: Run golangci-lint
@@ -41,6 +41,11 @@ tasks:
     cmds:
       - go mod tidy
 
+  security:
+    desc: Check dependencies for known vulnerabilities
+    cmds:
+      - go tool govulncheck ./...
+
   check:
     desc: Run everything CI should run (format check, vet, lint, tests)
     cmds:
@@ -48,6 +53,7 @@ tasks:
       - task: vet
       - task: lint
       - task: test
+      - task: security
 
   fuzz-lexer:
     desc: Fuzz the lexer for 30s

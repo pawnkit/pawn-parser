@@ -9,71 +9,93 @@ on:
 permissions:
   contents: read
 
+env:
+  GOWORK: "off"
+
 jobs:
   test:
-    name: test (go ${{ matrix.go-version }})
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.26", "stable"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          go-version: ${{ matrix.go-version }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - run: go test ./...
+      - run: go vet ./...
+      - if: runner.os != 'Windows'
+        run: CGO_ENABLED=1 go test -race -shuffle=on ./...
 
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: gofmt check
-        run: |
-          fmt_out="$(gofmt -l .)"
-          if [ -n "$fmt_out" ]; then
-            echo "The following files are not gofmt'd:"
-            echo "$fmt_out"
-            exit 1
-          fi
-
-      - name: go mod tidy check
-        run: |
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: |
+          test -z "$(gofmt -l .)"
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.12.2
+      - run: go tool govulncheck ./...
 
-      - name: Test (race, shuffled)
-        run: go test -race -shuffle=on ./...
-
-  lint:
-    name: lint
+  compatibility:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          go-version: "1.26"
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          version: v2.11.4
+          go-version-file: go.mod
+          cache: true
+      - run: go install golang.org/x/exp/cmd/apidiff@v0.0.0-20260718201538-764159d718ef
+      - name: Compare with v1.0.0
+        run: |
+          api_diff=$(go env GOPATH)/bin/apidiff
+          old_dir=$(go mod download -json github.com/pawnkit/pawn-parser@v1.0.0 | sed -n 's/.*"Dir": "\([^"]*\)".*/\1/p')
+          test -n "$old_dir"
+          old_api=$(mktemp)
+          new_api=$(mktemp)
+          (cd "$old_dir" && "$api_diff" -m -w "$old_api" github.com/pawnkit/pawn-parser)
+          "$api_diff" -m -w "$new_api" github.com/pawnkit/pawn-parser
+          test -z "$("$api_diff" -m -incompatible "$old_api" "$new_api")"
 
   fuzz:
-    name: fuzz smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          go-version: "1.26"
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test . -run=^$ -fuzz=FuzzParse -fuzztime=30s
+      - run: go test ./lexer -run=^$ -fuzz=FuzzTokenize -fuzztime=30s
 
-      - name: Fuzz parser
-        run: go test . -run=^$ -fuzz=FuzzParse -fuzztime=30s
-
-      - name: Fuzz lexer
-        run: go test ./lexer -run=^$ -fuzz=FuzzTokenize -fuzztime=30s
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./... -run=^$ -bench=. -benchmem

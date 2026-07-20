@@ -71,6 +71,10 @@ Formatters should use `ProfileLossless`. Syntax token handles then expose
 retained leading trivia, trailing trivia, and origin chains without expanding
 the pointer CST.
 
+The v1.0 pointer-tree API remains supported. See
+[compatibility](docs/compatibility.md) before choosing an API for a new
+integration.
+
 ## Contributing
 
 Grammar fixes and small compatibility cases are welcome. See
