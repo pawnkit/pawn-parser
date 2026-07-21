@@ -187,7 +187,7 @@ func (p *parser[N, S]) isMacroUnaryOperator() bool {
 }
 
 func isTagCastStart[N comparable, S nodeSink[N]](p *parser[N, S]) bool {
-	if p.macroTagPrefixStart() {
+	if p.macroTagPrefixStart() || p.genericTagPrefixStart() {
 		return true
 	}
 	if p.curKind() != token.Identifier || p.peekKind(1) != token.Colon {
@@ -198,13 +198,19 @@ func isTagCastStart[N comparable, S nodeSink[N]](p *parser[N, S]) bool {
 
 func (p *parser[N, S]) parseTaggedExpression() N {
 	var tag N
-	if p.macroTagPrefixStart() {
+	var colon token.Token
+	switch {
+	case p.genericTagPrefixStart():
+		tag = p.parseOptionalTagPrefix()
+		colon = p.toks.at(p.pos - 1)
+	case p.macroTagPrefixStart():
 		name := p.sink.NewLeaf(KindIdentifier, p.advance())
 		tag = p.parseCall(name)
-	} else {
+		colon = p.advance()
+	default:
 		tag = p.sink.NewLeaf(KindIdentifier, p.advance())
+		colon = p.advance()
 	}
-	colon := p.advance()
 	if p.at(token.RParen) || p.at(token.Comma) || p.at(token.Semicolon) {
 		node := p.sink.NewNode(KindTaggedExpression, tag)
 		p.sink.SetField(node, fieldTag, tag)

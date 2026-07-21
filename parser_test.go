@@ -519,6 +519,26 @@ func TestMacroInvocationAsTagPrefix(t *testing.T) {
 	}
 }
 
+func TestParameterizedTagSyntax(t *testing.T) {
+	t.Parallel()
+	src := "stock Ref<String>:Wrap(Ref<String>:value) { return Ref<String>:value; }\nstock Task<_>:Await(Task<_>:task) { return task; }\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("parameterized tags produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
+func TestDeclarationMacroWithOperatorArguments(t *testing.T) {
+	t.Parallel()
+	src := "#define DECLARE_OP(%0,%1) native operator%0(left, right) = %1\nDECLARE_OP(+, add);\nDECLARE_OP(==, equal);\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("operator macro arguments produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
 func TestTernaryTrueBranchStartsWithTagCast(t *testing.T) {
 	t.Parallel()
 	src := "stock Float:Clamp(Float:value) { return Float:(value < Float:(0.0) ? Float:(0.0) : value); }\n"

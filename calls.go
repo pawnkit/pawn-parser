@@ -162,10 +162,12 @@ func (p *parser[N, S]) parseArgumentList() N {
 		startPos := p.pos
 		endPos := p.argumentEnd(startPos)
 		wasBroken := p.broken
+		diagnosticStart := len(p.diagnostics)
 		arg := p.parseCallArgument()
 		if arg == p.sink.Nil() || p.sink.HasError(arg) || p.broken || p.pos != endPos {
 			p.pos = startPos
 			p.broken = wasBroken
+			p.diagnostics = p.diagnostics[:diagnosticStart]
 			arg = p.consumeStructuredMacroArgument(endPos)
 		}
 		p.sink.AddChild(node, arg)

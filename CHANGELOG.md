@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 - 2026-07-21
+
+### Fixed
+
+- Parse parameterized tags and operator arguments used by PawnPlus declaration macros.
+
 ## 1.1.2 - 2026-07-21
 
 ### Fixed

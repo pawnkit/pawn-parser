@@ -71,6 +71,19 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		p.sink.AddChild(node, call)
 		return node
 	}
+	if p.genericTagPrefixStart() {
+		nameTok := p.advance()
+		name := p.sink.NewLeaf(KindIdentifier, nameTok)
+		generic := p.parseStateSelector()
+		colon := p.advance()
+		node := p.sink.Store(Node{Kind: KindTaggedType, Start: nameTok.Start.Offset, End: colon.End.Offset, Leading: nameTok.LeadingTrivia, Trailing: colon.TrailingTrivia})
+		p.sink.SetField(node, fieldName, name)
+		p.sink.SetField(node, fieldGeneric, generic)
+		p.sink.AddChild(node, name)
+		p.sink.AddChild(node, generic)
+		p.rememberTag(nameTok.Text(p.source))
+		return node
+	}
 	if p.qualifiedTagPrefixStart() {
 		name := p.parseQualifiedIdentifier()
 		start, end := clampRange(p.source, p.sink.Start(name), p.sink.End(name))
@@ -127,6 +140,27 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		return node
 	}
 	return p.sink.Nil()
+}
+
+func (p *parser[N, S]) genericTagPrefixStart() bool {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.Lt {
+		return false
+	}
+	depth := 0
+	for index := 1; ; index++ {
+		switch p.peekKind(index) {
+		case token.Lt:
+			depth++
+		case token.Gt:
+			depth--
+			if depth == 0 {
+				return p.peekKind(index+1) == token.Colon
+			}
+		case token.EOF, token.Semicolon, token.LBrace, token.RParen:
+			return false
+		default:
+		}
+	}
 }
 
 func (p *parser[N, S]) macroTagPrefixStart() bool {
