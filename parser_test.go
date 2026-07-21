@@ -539,6 +539,16 @@ func TestDeclarationMacroWithOperatorArguments(t *testing.T) {
 	}
 }
 
+func TestConditionalElseIfSpliceDoesNotLeakDiagnostics(t *testing.T) {
+	t.Parallel()
+	src := "stock Remove(value) {\nif (value == 1) return 1;\n#if defined EXTRA_CASE\nelse if (value == 2) return 2;\n#endif\nreturn 0;\n}\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("conditional else-if splice produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
 func TestTernaryTrueBranchStartsWithTagCast(t *testing.T) {
 	t.Parallel()
 	src := "stock Float:Clamp(Float:value) { return Float:(value < Float:(0.0) ? Float:(0.0) : value); }\n"

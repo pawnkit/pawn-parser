@@ -9,6 +9,7 @@ import (
 func (p *parser[N, S]) parseConditionalRegion(g itemGrammar[N, S]) N {
 	startPos := p.pos
 	savedBroken := p.broken
+	diagnosticStart := len(p.diagnostics)
 	storageMark := p.sink.Mark()
 	region, ok := p.tryParseConditionalRegion(g)
 	if ok {
@@ -16,6 +17,7 @@ func (p *parser[N, S]) parseConditionalRegion(g itemGrammar[N, S]) N {
 	}
 	p.pos = startPos
 	p.broken = savedBroken
+	p.diagnostics = p.diagnostics[:diagnosticStart]
 	p.sink.Rewind(storageMark)
 	if p.isConditionalSplice() {
 		return p.consumeConditionalSplice()
