@@ -93,7 +93,7 @@ func (p *parser[N, S]) collectQualifiers() []N {
 	var quals []N
 	for {
 		switch {
-		case p.annotationQualifierStart():
+		case len(quals) == 0 && p.annotationQualifierStart():
 			quals = p.sink.Append(quals, p.parseAnnotationQualifier())
 		case slices.Contains(qualifierKinds, p.curKind()):
 			quals = p.sink.Append(quals, p.sink.NewLeaf(KindIdentifier, p.advance()))

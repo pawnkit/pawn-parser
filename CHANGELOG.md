@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-07-21
+
+### Fixed
+
+- Parsed `@` callback declarations with `const` array parameters without leaking errors from annotation lookahead.
+
 ## 1.1.0 - 2026-07-20
 
 ### Added

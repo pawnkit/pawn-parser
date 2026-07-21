@@ -32,6 +32,16 @@ func TestParseBasicFunction(t *testing.T) {
 	}
 }
 
+func TestParseForwardAtCallbackWithConstArrays(t *testing.T) {
+	t.Parallel()
+	src := "forward @receivestring(const message[], const source[]);\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("callback declaration produced parse errors: %+v", f.Diagnostics)
+	}
+}
+
 func TestParseCaseLabelWithUpperCamelConstant(t *testing.T) {
 	t.Parallel()
 	src := "stock F(dialogid) {\n    switch (dialogid) {\n        case DIALOG_CHOOSE_MAP:\n        {\n            return 1;\n        }\n    }\n    return 0;\n}\n"
