@@ -13,6 +13,9 @@ func isKeywordToken(k token.Kind) bool {
 }
 
 func (p *parser[N, S]) parseDeclaration() N {
+	if p.knownMacroInvocationStart() {
+		return p.parseKnownMacroInvocation()
+	}
 	if p.peekIsOperatorMacroInvocation() {
 		return p.parseOperatorMacroInvocation()
 	}
@@ -40,6 +43,28 @@ func (p *parser[N, S]) parseDeclaration() N {
 		return n
 	}
 	return p.parseVariableDeclarationWithQualifiers(quals)
+}
+
+func (p *parser[N, S]) knownMacroInvocationStart() bool {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen {
+		return false
+	}
+	_, ok := p.declarationMacros[p.cur().Text(p.source)]
+	return ok
+}
+
+func (p *parser[N, S]) parseKnownMacroInvocation() N {
+	name := p.sink.NewLeaf(KindIdentifier, p.advance())
+	arguments := p.parseArgumentList()
+	node := p.sink.NewNode(KindMacroInvocation, name, arguments)
+	p.sink.SetField(node, fieldName, name)
+	p.sink.SetField(node, fieldArguments, arguments)
+	if p.at(token.Semicolon) {
+		semi := p.advance()
+		p.sink.SetEnd(node, semi.End.Offset)
+		p.sink.SetTrailing(node, semi.TrailingTrivia)
+	}
+	return node
 }
 
 func (p *parser[N, S]) peekIsOperatorMacroInvocation() bool {

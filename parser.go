@@ -110,8 +110,10 @@ type parser[N comparable, S nodeSink[N]] struct {
 
 	allowMissingTrailingSemi bool
 
-	suppressTagCast bool
-	knownTags       map[string]struct{}
+	suppressTagCast   bool
+	knownTags         map[string]struct{}
+	knownMacros       map[string]struct{}
+	declarationMacros map[string]struct{}
 
 	sink S
 

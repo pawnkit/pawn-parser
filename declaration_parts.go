@@ -63,6 +63,14 @@ func (p *parser[N, S]) skipAngleStateSelector() {
 }
 
 func (p *parser[N, S]) parseOptionalTagPrefix() N {
+	if p.macroTagPrefixStart() {
+		name := p.sink.NewLeaf(KindIdentifier, p.advance())
+		call := p.parseCall(name)
+		colon := p.advance()
+		node := p.sink.Store(Node{Kind: KindTaggedType, Start: p.sink.Start(name), End: colon.End.Offset, Leading: p.sink.Leading(name), Trailing: colon.TrailingTrivia})
+		p.sink.AddChild(node, call)
+		return node
+	}
 	if p.qualifiedTagPrefixStart() {
 		name := p.parseQualifiedIdentifier()
 		start, end := clampRange(p.source, p.sink.Start(name), p.sink.End(name))
@@ -119,6 +127,30 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		return node
 	}
 	return p.sink.Nil()
+}
+
+func (p *parser[N, S]) macroTagPrefixStart() bool {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.LParen {
+		return false
+	}
+	if _, ok := p.knownMacros[p.cur().Text(p.source)]; !ok {
+		return false
+	}
+	depth := 0
+	for index := 1; ; index++ {
+		switch p.peekKind(index) {
+		case token.LParen:
+			depth++
+		case token.RParen:
+			depth--
+			if depth == 0 {
+				return p.peekKind(index+1) == token.Colon
+			}
+		case token.EOF, token.Semicolon, token.LBrace:
+			return false
+		default:
+		}
+	}
 }
 
 func (p *parser[N, S]) qualifiedTagPrefixStart() bool {

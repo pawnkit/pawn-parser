@@ -7,7 +7,7 @@ func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 	p.advance() // '#'
 	p.advance() // 'define'
 
-	if !p.at(token.Identifier) {
+	if !p.at(token.Identifier) && !isKeywordToken(p.curKind()) {
 		return p.consumeRawDirectiveLineFrom(startOffset, KindDirectiveDefine, leading)
 	}
 	nameTok := p.advance()
@@ -27,6 +27,7 @@ func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 		if params != p.sink.Nil() {
 			p.sink.SetField(node, fieldParameters, params)
 			p.sink.AddChild(node, params)
+			p.rememberMacro(nameTok)
 		}
 		return node
 	}
@@ -51,10 +52,39 @@ func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 	if params != p.sink.Nil() {
 		p.sink.SetField(node, fieldParameters, params)
 		p.sink.AddChild(node, params)
+		p.rememberMacro(nameTok)
+		if p.macroBodyDeclaresSymbols(bodyStartIdx, bodyEndIdx) {
+			p.rememberDeclarationMacro(nameTok)
+		}
 	}
 	p.sink.SetField(node, fieldValue, valueNode)
 	p.sink.AddChild(node, valueNode)
 	return node
+}
+
+func (p *parser[N, S]) macroBodyDeclaresSymbols(start, end int) bool {
+	for index := start; index < end; index++ {
+		switch p.toks.at(index).Kind {
+		case token.KwForward, token.KwPublic, token.KwNative:
+			return true
+		default:
+		}
+	}
+	return false
+}
+
+func (p *parser[N, S]) rememberMacro(name token.Token) {
+	if p.knownMacros == nil {
+		p.knownMacros = make(map[string]struct{})
+	}
+	p.knownMacros[name.Text(p.source)] = struct{}{}
+}
+
+func (p *parser[N, S]) rememberDeclarationMacro(name token.Token) {
+	if p.declarationMacros == nil {
+		p.declarationMacros = make(map[string]struct{})
+	}
+	p.declarationMacros[name.Text(p.source)] = struct{}{}
 }
 
 func (p *parser[N, S]) consumeRawDirectiveLineFrom(startOffset int, kind Kind, leading []token.Trivia) N {

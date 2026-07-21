@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 - 2026-07-21
+
+### Fixed
+
+- Parse generated declarations, macro-based tags, and keyword-named pattern macros used by common Pawn includes.
+
 ## 1.1.1 - 2026-07-21
 
 ### Fixed

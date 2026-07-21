@@ -489,6 +489,36 @@ func TestTopLevelOperatorMacroInvocation(t *testing.T) {
 	}
 }
 
+func TestKnownMacroInvocationAtTopLevel(t *testing.T) {
+	t.Parallel()
+	src := "#define DECLARE(%0, %1) forward %0(); public %0() { return %1; }\nDECLARE(Generated, 1)\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() || len(f.Root.Children) != 2 || f.Root.Children[1].Kind != KindMacroInvocation {
+		t.Fatalf("expected clean macro invocation, got diagnostics=%+v children=%v", f.Diagnostics, kindsOf(f.Root.Children))
+	}
+}
+
+func TestKeywordNamedPatternMacro(t *testing.T) {
+	t.Parallel()
+	src := "#define new%0|||%9|||%1:%2||| %9|||%0|||%1|||%2|||\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("keyword-named macro produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
+func TestMacroInvocationAsTagPrefix(t *testing.T) {
+	t.Parallel()
+	src := "#define TAG(%0) t_%0\nenum E { TAG(VEHICLE_STATUS):status };\nstock Set(&TAG(VEHICLE_STATUS):value) { value = TAG(VEHICLE_STATUS):0; }\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("macro tag prefix produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
 func TestTernaryTrueBranchStartsWithTagCast(t *testing.T) {
 	t.Parallel()
 	src := "stock Float:Clamp(Float:value) { return Float:(value < Float:(0.0) ? Float:(0.0) : value); }\n"
