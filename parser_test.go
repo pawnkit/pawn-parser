@@ -94,36 +94,35 @@ func TestParseAdjacentStringConcat(t *testing.T) {
 
 func TestParsePackedArrayDimension(t *testing.T) {
 	t.Parallel()
-	source := []byte("static labels[2][16 char];\n")
-	file := Parse(source)
-	if file.HasParseErrors() {
-		t.Fatalf("packed dimension did not parse: %+v", file.Diagnostics)
-	}
 
-	var packed *Node
-	var dimensions []string
-	var visit func(*Node)
-	visit = func(node *Node) {
-		if node == nil || packed != nil {
-			return
+	for _, sizeText := range []string{"16", "MAX_PLAYERS", "MAX_LENGTH * 8"} {
+		source := []byte("static labels[" + sizeText + " char];\n")
+		file := Parse(source)
+		if file.HasParseErrors() {
+			t.Fatalf("packed dimension %q did not parse: %+v", sizeText, file.Diagnostics)
 		}
-		if node.Kind == KindDimension && node.Field("packed") != nil {
-			packed = node
-			return
+
+		var packed *Node
+		var visit func(*Node)
+		visit = func(node *Node) {
+			if node == nil || packed != nil {
+				return
+			}
+			if node.Kind == KindDimension && node.Field("packed") != nil {
+				packed = node
+				return
+			}
+			for _, child := range node.Children {
+				visit(child)
+			}
 		}
-		if node.Kind == KindDimension {
-			dimensions = append(dimensions, node.Text(source))
+		visit(file.Root)
+		if packed == nil {
+			t.Fatalf("packed dimension %q not found: %+v", sizeText, packed)
 		}
-		for _, child := range node.Children {
-			visit(child)
+		if size := packed.Field("size"); size == nil || size.Text(source) != sizeText {
+			t.Fatalf("packed dimension size = %q, want %q", size.Text(source), sizeText)
 		}
-	}
-	visit(file.Root)
-	if packed == nil {
-		t.Fatalf("packed dimension not found; dimensions: %q", dimensions)
-	}
-	if size := packed.Field("size"); size == nil || size.Text(source) != "16" {
-		t.Fatalf("packed dimension size = %q", size.Text(source))
 	}
 }
 

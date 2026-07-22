@@ -183,6 +183,9 @@ func (p *parser[N, S]) parseUnary() N {
 }
 
 func (p *parser[N, S]) isMacroUnaryOperator() bool {
+	if p.parsingDimension && p.peekKind(1) == token.Identifier && p.peek(1).Text(p.source) == "char" {
+		return false
+	}
 	return p.at(token.Identifier) && p.peekKind(1) == token.Identifier
 }
 
