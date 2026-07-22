@@ -162,6 +162,19 @@ func (p *parser[N, S]) parseArgumentList() N {
 	lp := p.advance()
 	node := p.sink.Store(Node{Kind: KindArgumentList, Start: lp.Start.Offset, Leading: lp.LeadingTrivia})
 	for !p.atEnd() && !p.at(token.RParen) {
+		if p.at(token.Hash) && p.peekDirectiveKeyword() == dirIf {
+			region := p.parseConditionalRegion(itemGrammar[N, S]{
+				parseItem:              (*parser[N, S]).parseCallArgument,
+				commaSeparated:         true,
+				parseUnknownHashAsItem: true,
+				recoveryContext:        "call argument",
+				recoveryExpected:       []token.Kind{token.Comma, token.RParen},
+				stopKind:               token.RParen,
+				abortAtStop:            true,
+			})
+			p.sink.AddChild(node, region)
+			continue
+		}
 		startPos := p.pos
 		endPos := p.argumentEnd(startPos)
 		wasBroken := p.broken

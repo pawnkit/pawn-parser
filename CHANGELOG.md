@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.6 - 2026-07-22
+
+### Fixed
+
+- Preserve conditional regions inside call argument lists.
+
 ## 1.1.5 - 2026-07-22
 
 ### Fixed

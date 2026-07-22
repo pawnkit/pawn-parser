@@ -127,6 +127,20 @@ func TestParsePackedArrayDimension(t *testing.T) {
 	}
 }
 
+func TestParseConditionalCallArguments(t *testing.T) {
+	t.Parallel()
+	source := []byte("main() { Send(playerid,\n#if DEBUG\n1,\n#else\n2,\n#endif\n\"hello\"); }\n")
+	file := Parse(source)
+	if file.HasParseErrors() {
+		t.Fatalf("conditional arguments did not parse: %+v", file.Diagnostics)
+	}
+	call := file.Root.Children[0].Field("body").Children[0].Field("expression")
+	arguments := call.Field("arguments")
+	if len(arguments.Children) != 3 || arguments.Children[1].Kind != KindConditionalRegion {
+		t.Fatalf("arguments were not preserved around conditional: %+v", arguments.Children)
+	}
+}
+
 func TestParseStringizeOperator(t *testing.T) {
 	t.Parallel()
 	src := "stock const X[] = #VERSION_MAJOR \".\" #VERSION_MINOR;\n"
