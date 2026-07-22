@@ -49,6 +49,9 @@ func (p *parser[N, S]) parseStatement() N {
 		}
 		return p.parseSingleDirective()
 	default:
+		if p.inlineOperatorMacroBlockStart() {
+			return p.parseInlineOperatorMacroBlock()
+		}
 		if p.macroFunctionDefinitionStart() {
 			return p.parseFunctionLike(p.collectQualifiers())
 		}
@@ -60,6 +63,47 @@ func (p *parser[N, S]) parseStatement() N {
 		}
 		return p.parseExpressionStatement()
 	}
+}
+
+func (p *parser[N, S]) inlineOperatorMacroBlockStart() bool {
+	if !p.at(token.Identifier) || p.peekKind(1) != token.Identifier {
+		return false
+	}
+	for i := 2; ; i++ {
+		if p.peek(i).Start.Line != p.cur().Start.Line {
+			return false
+		}
+		//nolint:exhaustive // Only delimiters affect this lookahead.
+		switch p.peekKind(i) {
+		case token.Assign:
+			return p.peekKind(i+1) == token.Gt
+		case token.LBrace, token.Semicolon, token.EOF:
+			return false
+		}
+	}
+}
+
+func (p *parser[N, S]) parseInlineOperatorMacroBlock() N {
+	start := p.cur().Start.Offset
+	leading := p.cur().LeadingTrivia
+	depth := 0
+	seenBlock := false
+	last := p.cur()
+	for !p.atEnd() {
+		last = p.advance()
+		//nolint:exhaustive // Only braces affect block depth.
+		switch last.Kind {
+		case token.LBrace:
+			depth++
+			seenBlock = true
+		case token.RBrace:
+			depth--
+			if seenBlock && depth == 0 {
+				return p.directiveSpan(KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
+			}
+		}
+	}
+	return p.directiveSpan(KindMacroInvocation, start, last.End.Offset, leading, last.TrailingTrivia)
 }
 
 func nativeParenthesizedStatement(kind token.Kind) bool {
@@ -83,6 +127,9 @@ func (p *parser[N, S]) macroFunctionDefinitionStart() bool {
 	depth := 0
 	foundParams := false
 	for i := 1; ; i++ {
+		if !foundParams && p.peek(i).Start.Line != p.cur().Start.Line {
+			return false
+		}
 		switch p.peekKind(i) {
 		case token.LParen:
 			depth++
@@ -183,9 +230,51 @@ func (p *parser[N, S]) consumeTrailingSemi(node N) {
 		p.sink.SetTrailing(node, semi.TrailingTrivia)
 	case p.missingSemiOK():
 		p.sink.SetMissingSemi(node, true)
+	case p.statementEndsWithKnownMacro(node) && p.previousTokenEndsLine():
+		p.sink.SetMissingSemi(node, true)
 	default:
 		p.sink.SetHasError(node, true)
 	}
+}
+
+func (p *parser[N, S]) previousTokenEndsLine() bool {
+	previous := p.toks.at(p.pos - 1)
+	return lastTokenEndsLine(previous) || previous.End.Line < p.cur().Start.Line
+}
+
+func (p *parser[N, S]) statementEndsWithKnownMacro(node N) bool {
+	expr := p.sink.Field(node, fieldExpression)
+	if p.sink.Kind(node) == KindReturnStatement {
+		expr = p.sink.Field(node, fieldValue)
+	}
+	if expr == p.sink.Nil() {
+		return false
+	}
+	if p.sink.Kind(expr) == KindCallExpression {
+		expr = p.sink.Field(expr, fieldFunction)
+	}
+	if expr == p.sink.Nil() || p.sink.Kind(expr) != KindIdentifier {
+		return false
+	}
+	name := p.sink.Token(expr).Text(p.source)
+	if _, ok := p.knownMacros[name]; ok {
+		return true
+	}
+	return macroStyleName(name)
+}
+
+func macroStyleName(name string) bool {
+	hasLetter := false
+	for _, char := range name {
+		switch {
+		case char >= 'A' && char <= 'Z':
+			hasLetter = true
+		case char >= '0' && char <= '9', char == '_':
+		default:
+			return false
+		}
+	}
+	return hasLetter
 }
 
 func (p *parser[N, S]) parseIfStatement() N {

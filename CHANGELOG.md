@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.9 - 2026-07-22
+
+### Fixed
+
+- Parse object-like statement macros without semicolons.
+- Handle compact modulo expressions such as `value%4`.
+- Preserve inline operator macros and multiline PawnPlus syntax.
+
 ## 1.1.8 - 2026-07-22
 
 ### Fixed

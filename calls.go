@@ -11,6 +11,10 @@ func (p *parser[N, S]) parsePostfix() N {
 		case token.LBracket:
 			expr = p.parseSubscript(expr)
 		case token.LBrace:
+			previous := p.toks.at(p.pos - 1)
+			if previous.End.Line < p.cur().Start.Line || lastTokenEndsLine(previous) {
+				return expr
+			}
 			expr = p.parseCellSelection(expr)
 		case token.Dot, token.ColonColon:
 			expr = p.parseMemberSelection(expr)
@@ -21,6 +25,10 @@ func (p *parser[N, S]) parsePostfix() N {
 			p.sink.SetToken(node, opTok)
 			expr = node
 		case token.Identifier:
+			previous := p.toks.at(p.pos - 1)
+			if previous.End.Line < p.cur().Start.Line || lastTokenEndsLine(previous) {
+				return expr
+			}
 			if p.parsingDimension && p.cur().Text(p.source) == "char" {
 				return expr
 			}

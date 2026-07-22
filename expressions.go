@@ -113,6 +113,28 @@ func (p *parser[N, S]) parseTernary() N {
 func (p *parser[N, S]) parseBinary(minBP int) N {
 	left := p.parseUnary()
 	for {
+		if minBP <= bpMultiplicative && p.compactModuloLiteral() {
+			combined := p.advance()
+			opTok := combined
+			opTok.End.Offset = opTok.Start.Offset + 1
+			opTok.End.Col = opTok.Start.Col + 1
+			opTok.TrailingTrivia = nil
+
+			rightTok := combined
+			rightTok.Kind = token.IntLiteral
+			rightTok.Start.Offset++
+			rightTok.Start.Col++
+			rightTok.LeadingTrivia = nil
+			right := p.sink.NewLeaf(KindLiteral, rightTok)
+
+			node := p.sink.NewNode(KindBinaryExpression, left, right)
+			p.sink.SetField(node, fieldLeft, left)
+			p.sink.SetField(node, fieldRight, right)
+			p.sink.SetToken(node, opTok)
+			left = node
+			continue
+		}
+
 		bp, ok := binaryBindingPower(p.curKind())
 		if !ok || bp < minBP {
 			return left
@@ -125,6 +147,14 @@ func (p *parser[N, S]) parseBinary(minBP int) N {
 		p.sink.SetToken(node, opTok)
 		left = node
 	}
+}
+
+func (p *parser[N, S]) compactModuloLiteral() bool {
+	if !p.at(token.MacroParam) {
+		return false
+	}
+	text := p.cur().Text(p.source)
+	return len(text) == 2 && text[0] == '%' && text[1] >= '0' && text[1] <= '9'
 }
 
 func isUnaryOp(k token.Kind) bool {
@@ -183,6 +213,9 @@ func (p *parser[N, S]) parseUnary() N {
 }
 
 func (p *parser[N, S]) isMacroUnaryOperator() bool {
+	if p.cur().End.Line < p.peek(1).Start.Line || lastTokenEndsLine(p.cur()) {
+		return false
+	}
 	if p.parsingDimension && p.peekKind(1) == token.Identifier && p.peek(1).Text(p.source) == "char" {
 		return false
 	}

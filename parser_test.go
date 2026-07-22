@@ -126,6 +126,33 @@ func TestParsePackedArrayDimension(t *testing.T) {
 	}
 }
 
+func TestPackedDimensionInMultilineDeclaration(t *testing.T) {
+	t.Parallel()
+	source := []byte("static\n s_DialogName[MAX_PLAYERS][32 char],\n bool:s_DialogOpened[MAX_PLAYERS]\n;\n")
+	file := Parse(source)
+	if file.HasParseErrors() {
+		t.Fatalf("multiline packed declaration did not parse: %+v", file.Diagnostics)
+	}
+	var packed *Node
+	var visit func(*Node)
+	visit = func(node *Node) {
+		if node == nil || packed != nil {
+			return
+		}
+		if node.Kind == KindDimension && node.Field("packed") != nil {
+			packed = node
+			return
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(file.Root)
+	if packed == nil || packed.Field("size").Text(source) != "32" {
+		t.Fatalf("packed dimension not preserved: %+v", packed)
+	}
+}
+
 func TestParseConditionalCallArguments(t *testing.T) {
 	t.Parallel()
 	source := []byte("main() { Send(playerid,\n#if DEBUG\n1,\n#else\n2,\n#endif\n\"hello\"); }\n")
@@ -150,6 +177,48 @@ func TestGenericParameterTagRangeIncludesColon(t *testing.T) {
 	parameter := file.Root.Children[0].Field("parameters").Children[0]
 	if tag := parameter.Field("tag"); tag == nil || tag.Text(source) != "Task<_>:" {
 		t.Fatalf("generic tag text = %q", tag.Text(source))
+	}
+}
+
+func TestKnownObjectMacrosMayTerminateStatements(t *testing.T) {
+	t.Parallel()
+	source := []byte("#define DENIED ShowError();\n#define CHECK if (failed) return 1;\nmain() {\nif (failed) return DENIED\nCHECK\nreturn IMPORTED_DENIAL\n}\n")
+	file := Parse(source)
+	if file.HasParseErrors() {
+		t.Fatalf("statement macros did not parse: %+v", file.Diagnostics)
+	}
+	body := file.Root.Children[2].Field("body")
+	if !body.Children[0].Field("consequence").MissingSemi || !body.Children[1].MissingSemi || !body.Children[2].MissingSemi {
+		t.Fatalf("statement macros were not marked with elided semicolons: %+v", body.Children)
+	}
+}
+
+func TestUppercaseObjectMacrosMayTerminateStatements(t *testing.T) {
+	t.Parallel()
+	src := "main() {\nif (!Ready()) return NOTCONNECTED\nif (Limit()) { return 1; }\nNOTONDUTY\nif (OnFoot()) { return 2; }\nif (!Admin()) return CANTUSECMD\n{ new id; }\n}\n"
+	f := Parse([]byte(src))
+	if f.HasParseErrors() {
+		t.Fatalf("uppercase macro statements produced diagnostics: broken=%v diagnostics=%+v", f.Broken, f.Diagnostics)
+	}
+}
+
+func TestCompactModuloLiteralParsesAsExpression(t *testing.T) {
+	t.Parallel()
+	src := "main() { if (value%4 == 0) value++; }\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("compact modulo expression produced diagnostics: %+v", f.Diagnostics)
+	}
+}
+
+func TestInlineOperatorMacroBlockParsesCleanly(t *testing.T) {
+	t.Parallel()
+	src := "main() { sortInline players => (R = left > right) { R = 1; } }\n"
+	f := Parse([]byte(src))
+	mustNotBeBroken(t, f, src)
+	if f.HasParseErrors() {
+		t.Fatalf("inline operator macro block produced diagnostics: %+v", f.Diagnostics)
 	}
 }
 

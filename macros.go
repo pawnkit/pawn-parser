@@ -49,10 +49,10 @@ func (p *parser[N, S]) parseDefineDirective(startOffset int) N {
 	node := p.sink.Store(Node{Kind: KindDirectiveDefine, Start: startOffset, End: bodyEnd, Leading: leading, Trailing: lastTok.TrailingTrivia})
 	p.sink.SetField(node, fieldName, nameNode)
 	p.sink.AddChild(node, nameNode)
+	p.rememberMacro(nameTok)
 	if params != p.sink.Nil() {
 		p.sink.SetField(node, fieldParameters, params)
 		p.sink.AddChild(node, params)
-		p.rememberMacro(nameTok)
 		if p.macroBodyDeclaresSymbols(bodyStartIdx, bodyEndIdx) {
 			p.rememberDeclarationMacro(nameTok)
 		}
