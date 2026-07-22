@@ -224,7 +224,10 @@ func (p *parser[N, S]) parseDimensions() []N {
 		lb := p.advance()
 		dim := p.sink.Store(Node{Kind: KindDimension, Start: lb.Start.Offset, Leading: lb.LeadingTrivia})
 		if !p.at(token.RBracket) {
+			wasParsingDimension := p.parsingDimension
+			p.parsingDimension = true
 			expr := p.parseExpression()
+			p.parsingDimension = wasParsingDimension
 			p.sink.SetField(dim, fieldSize, expr)
 			p.sink.AddChild(dim, expr)
 		}

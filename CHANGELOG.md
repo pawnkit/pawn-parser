@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.5 - 2026-07-22
+
+### Fixed
+
+- Preserve `char` markers in packed array dimensions.
+
 ## 1.1.4 - 2026-07-21
 
 ### Fixed

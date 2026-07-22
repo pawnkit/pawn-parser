@@ -21,6 +21,9 @@ func (p *parser[N, S]) parsePostfix() N {
 			p.sink.SetToken(node, opTok)
 			expr = node
 		case token.Identifier:
+			if p.parsingDimension && p.cur().Text(p.source) == "char" {
+				return expr
+			}
 			opTok := p.advance()
 			node := p.sink.NewNode(KindUnaryExpression, expr)
 			p.sink.SetField(node, fieldExpression, expr)

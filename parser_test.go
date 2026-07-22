@@ -92,6 +92,41 @@ func TestParseAdjacentStringConcat(t *testing.T) {
 	}
 }
 
+func TestParsePackedArrayDimension(t *testing.T) {
+	t.Parallel()
+	source := []byte("static labels[2][16 char];\n")
+	file := Parse(source)
+	if file.HasParseErrors() {
+		t.Fatalf("packed dimension did not parse: %+v", file.Diagnostics)
+	}
+
+	var packed *Node
+	var dimensions []string
+	var visit func(*Node)
+	visit = func(node *Node) {
+		if node == nil || packed != nil {
+			return
+		}
+		if node.Kind == KindDimension && node.Field("packed") != nil {
+			packed = node
+			return
+		}
+		if node.Kind == KindDimension {
+			dimensions = append(dimensions, node.Text(source))
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(file.Root)
+	if packed == nil {
+		t.Fatalf("packed dimension not found; dimensions: %q", dimensions)
+	}
+	if size := packed.Field("size"); size == nil || size.Text(source) != "16" {
+		t.Fatalf("packed dimension size = %q", size.Text(source))
+	}
+}
+
 func TestParseStringizeOperator(t *testing.T) {
 	t.Parallel()
 	src := "stock const X[] = #VERSION_MAJOR \".\" #VERSION_MINOR;\n"
