@@ -69,6 +69,8 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		colon := p.advance()
 		node := p.sink.Store(Node{Kind: KindTaggedType, Start: p.sink.Start(name), End: colon.End.Offset, Leading: p.sink.Leading(name), Trailing: colon.TrailingTrivia})
 		p.sink.AddChild(node, call)
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		return node
 	}
 	if p.genericTagPrefixStart() {
@@ -81,6 +83,8 @@ func (p *parser[N, S]) parseOptionalTagPrefix() N {
 		p.sink.SetField(node, fieldGeneric, generic)
 		p.sink.AddChild(node, name)
 		p.sink.AddChild(node, generic)
+		p.sink.SetEnd(node, colon.End.Offset)
+		p.sink.SetTrailing(node, colon.TrailingTrivia)
 		p.rememberTag(nameTok.Text(p.source))
 		return node
 	}

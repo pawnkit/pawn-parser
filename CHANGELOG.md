@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.8 - 2026-07-22
+
+### Fixed
+
+- Include colons in generic and macro tag ranges.
+
 ## 1.1.7 - 2026-07-22
 
 ### Fixed

@@ -140,6 +140,19 @@ func TestParseConditionalCallArguments(t *testing.T) {
 	}
 }
 
+func TestGenericParameterTagRangeIncludesColon(t *testing.T) {
+	t.Parallel()
+	source := []byte("stock F(Task<_>:value);\n")
+	file := Parse(source)
+	if file.HasParseErrors() {
+		t.Fatalf("generic tag did not parse: %+v", file.Diagnostics)
+	}
+	parameter := file.Root.Children[0].Field("parameters").Children[0]
+	if tag := parameter.Field("tag"); tag == nil || tag.Text(source) != "Task<_>:" {
+		t.Fatalf("generic tag text = %q", tag.Text(source))
+	}
+}
+
 func TestParseStringizeOperator(t *testing.T) {
 	t.Parallel()
 	src := "stock const X[] = #VERSION_MAJOR \".\" #VERSION_MINOR;\n"
