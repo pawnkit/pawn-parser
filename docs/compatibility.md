@@ -11,6 +11,20 @@ New analysis tools should use `ParseWithProfile` with `ProfileAnalysis`.
 Formatters that need every token and comment should use `ProfileLossless`.
 `Parse` remains useful for integrations built around `*Node`.
 
+## API lifecycle
+
+The root `parser` package and the `lexer` and `token` packages are stable.
+Their exported parsing entry points, token and syntax kinds, byte ranges,
+diagnostics, and documented traversal types follow semantic versioning.
+
+Numeric kind values are process-local implementation details. Store kind names
+or your own identifiers when data crosses a process or persists to disk.
+Recovery trees for invalid source may improve between minor releases.
+
+Everything under `internal` is internal and has no compatibility promise.
+New exported helpers start as preview when their release notes say so; they
+become stable only after this document names them.
+
 Each minor release is checked with Go's `apidiff` against the previous stable
 tag. Parser output may become more accurate in minor releases: valid syntax can
 produce a better tree, and invalid syntax can produce different recovery nodes

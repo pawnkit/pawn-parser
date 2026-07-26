@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "repository": "pawnkit/pawn-parser",
+  "maturity": "preview",
+  "platforms": ["linux-amd64"],
+  "profiles": ["samp-037", "openmp"],
+  "compilers": [],
+  "contracts": [],
+  "limitations": [
+    "Public syntax API stability remains under RFC review.",
+    "Windows and macOS builds are not tested in this repository."
+  ]
+}

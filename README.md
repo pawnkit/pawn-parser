@@ -1,5 +1,7 @@
 # pawn-parser
 
+[![Maturity: preview](https://img.shields.io/badge/maturity-preview-blue)](.pawnkit/support.json)
+
 Reusable Go lexer and concrete-syntax-tree parser for the Pawn language used by
 SA-MP and open.mp projects.
 

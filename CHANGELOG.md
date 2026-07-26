@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.10 - 2026-07-25
+
+### Added
+
+- Documented the stable Go API and added a compatibility compile test.
+- Published the repository support record.
+
 ## 1.1.9 - 2026-07-22
 
 ### Fixed
