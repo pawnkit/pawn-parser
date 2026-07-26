@@ -1,12 +1,43 @@
 package lexer
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pawnkit/pawn-parser/token"
 )
+
+type delayedCancelContext struct {
+	checks atomic.Int32
+	after  int32
+}
+
+func (c *delayedCancelContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *delayedCancelContext) Done() <-chan struct{}       { return nil }
+func (c *delayedCancelContext) Value(any) any               { return nil }
+func (c *delayedCancelContext) Err() error {
+	if c.checks.Add(1) > c.after {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestTokenizeContextStopsDuringLexing(t *testing.T) {
+	t.Parallel()
+	ctx := &delayedCancelContext{after: 1}
+	tokens, err := TokenizeContext(ctx, []byte(strings.Repeat("new value = 1;\n", 2_000)))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if tokens != nil {
+		t.Fatal("cancelled tokenization returned partial tokens")
+	}
+}
 
 func TestCompactSyntaxMatchesTokens(t *testing.T) {
 	t.Parallel()

@@ -14,6 +14,7 @@ var (
 	_ func([]byte, []token.Token, parser.ParseOptions) *parser.File                                  = parser.ParseTokensWithOptions
 	_ func(context.Context, []byte, []token.Token, parser.ParseOptions) (*parser.CompactFile, error) = parser.ParseTokensCompactContext
 	_ func([]byte) []token.Token                                                                     = lexer.Tokenize
+	_ func(context.Context, []byte) ([]token.Token, error)                                           = lexer.TokenizeContext
 	_ func(string) (token.Kind, bool)                                                                = token.LookupKeyword
 	_ parser.Kind                                                                                    = parser.KindInvalid
 	_ parser.DiagnosticCode                                                                          = parser.DiagnosticUnexpectedToken

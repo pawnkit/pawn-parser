@@ -2,6 +2,7 @@
 package lexer
 
 import (
+	"context"
 	"sync"
 
 	"github.com/pawnkit/pawn-parser/token"
@@ -27,6 +28,20 @@ func RawTokens(src []byte) []token.Token {
 func Tokenize(src []byte) []token.Token {
 	tokens, trivia := buildTokens(src)
 	return tokens.finish(trivia.finish())
+}
+
+// TokenizeContext tokenizes src and stops when ctx is cancelled.
+func TokenizeContext(ctx context.Context, src []byte) ([]token.Token, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	tokens, trivia, err := buildTokensContext(ctx, src)
+	if err != nil {
+		tokens.discard()
+		trivia.discard()
+		return nil, err
+	}
+	return tokens.finish(trivia.finish()), nil
 }
 
 // TokenizeCompact tokenizes src and builds compact retention records.
@@ -99,19 +114,48 @@ func triviaFlags(kind token.Kind) token.TriviaFlags {
 }
 
 func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
+	tokens, trivia, _ := buildTokensWithContext(context.Background(), false, src)
+	return tokens, trivia
+}
+
+func buildTokensContext(ctx context.Context, src []byte) (tokenBuilder, triviaBuilder, error) {
+	return buildTokensWithContext(ctx, true, src)
+}
+
+func buildTokensWithContext(
+	ctx context.Context,
+	cancellable bool,
+	src []byte,
+) (tokenBuilder, triviaBuilder, error) {
 	s := newScanner(src)
 	var tokens tokenBuilder
 	var trivia triviaBuilder
 	var pending rawToken
 	hasPending := false
 	leadingStart := 0
+	steps := uint32(0)
+	nextRaw := func() (rawToken, error) {
+		if cancellable {
+			steps++
+			if steps%256 == 0 {
+				if err := ctx.Err(); err != nil {
+					return rawToken{}, err
+				}
+			}
+		}
+		return s.nextRaw(), nil
+	}
 
 	for {
 		r := pending
 		if hasPending {
 			hasPending = false
 		} else {
-			r = s.nextRaw()
+			var err error
+			r, err = nextRaw()
+			if err != nil {
+				return tokens, trivia, err
+			}
 		}
 		if r.kind.IsTrivia() {
 			trivia.append(token.Trivia{Kind: r.kind, Start: r.start, End: r.end})
@@ -130,7 +174,10 @@ func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 		}
 
 		for {
-			r2 := s.nextRaw()
+			r2, err := nextRaw()
+			if err != nil {
+				return tokens, trivia, err
+			}
 			if !r2.kind.IsTrivia() {
 				pending = r2
 				hasPending = true
@@ -146,7 +193,7 @@ func buildTokens(src []byte) (tokenBuilder, triviaBuilder) {
 		tokens.append(builtToken{kind: r.kind, start: r.start, end: r.end, trivia: attached})
 	}
 
-	return tokens, trivia
+	return tokens, trivia, nil
 }
 
 const maxInitialTokenCapacity = 4096
@@ -260,6 +307,13 @@ func (b *triviaBuilder) finish() []token.Trivia {
 	return trivia
 }
 
+func (b *triviaBuilder) discard() {
+	for _, block := range b.blocks {
+		releaseTriviaBlock(block)
+	}
+	b.blocks = nil
+}
+
 func (b *tokenBuilder) append(value builtToken) { //nolint:dupl // Keep the hot path concrete.
 	if len(b.blocks) == 0 || b.next == len(b.blocks[len(b.blocks)-1].data) {
 		lastSize := 0
@@ -297,6 +351,13 @@ func (b *tokenBuilder) finish(trivia []token.Trivia) []token.Token {
 		releaseBuiltTokenBlock(block)
 	}
 	return tokens
+}
+
+func (b *tokenBuilder) discard() {
+	for _, block := range b.blocks {
+		releaseBuiltTokenBlock(block)
+	}
+	b.blocks = nil
 }
 
 func (b *tokenBuilder) finishCompact(trivia []token.Trivia, retainTrivia, buildFull bool) ([]token.Token, []token.CompactToken, []token.CompactTrivia) {
