@@ -137,3 +137,15 @@ func BenchmarkTypedSyntaxTraversal(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkDeclarationIndexLargeFile(b *testing.B) {
+	file := ParseWithProfile(benchmarkSource(b), ProfileAnalysis)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		index := BuildDeclarationIndex(file)
+		if index.Len() == 0 {
+			b.Fatal("declaration index is empty")
+		}
+	}
+}

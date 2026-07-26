@@ -14,6 +14,7 @@ var (
 	_ func(string) (token.Kind, bool)                               = token.LookupKeyword
 	_ parser.Kind                                                   = parser.KindInvalid
 	_ parser.DiagnosticCode                                         = parser.DiagnosticUnexpectedToken
+	_ parser.DeclarationIndex                                       = parser.BuildDeclarationIndex(nil)
 	_ token.Kind                                                    = token.Invalid
 )
 
@@ -21,6 +22,10 @@ var _ = func(file *parser.CompactFile, diagnostic parser.Diagnostic, span token.
 	_ = file.Tree
 	_ = diagnostic.Code
 	_ = diagnostic.Message
+	index := parser.BuildDeclarationIndex(file)
+	_, _ = index.At(0)
+	_ = index.Len()
+	_ = index.Reliable()
 	_ = span.Start
 	_ = span.End
 }

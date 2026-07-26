@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 - 2026-07-26
+
+### Added
+
+- Added stable top-level declaration boundaries for incremental tools.
+
 ## 1.1.10 - 2026-07-25
 
 ### Added
