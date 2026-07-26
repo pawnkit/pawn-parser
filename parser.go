@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"context"
 	"sort"
 	"strconv"
 
@@ -105,6 +106,9 @@ type parser[N comparable, S nodeSink[N]] struct {
 	broken    bool
 	condDepth int
 	depth     int
+	ctx       context.Context
+	cancelled error
+	steps     uint32
 
 	branchTop bool
 
@@ -520,11 +524,19 @@ func (p *parser[N, S]) at(k token.Kind) bool {
 }
 
 func (p *parser[N, S]) atEnd() bool {
-	return p.curKind() == token.EOF
+	return p.cancelled != nil || p.curKind() == token.EOF
 }
 
 func (p *parser[N, S]) advance() token.Token {
 	t := p.cur()
+	p.steps++
+	if p.ctx != nil && p.steps%256 == 0 {
+		if err := p.ctx.Err(); err != nil {
+			p.cancelled = err
+			p.pos = p.toks.len() - 1
+			return t
+		}
+	}
 	if p.pos < p.toks.len()-1 {
 		p.pos++
 	}

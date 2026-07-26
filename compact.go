@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"math"
 	"sort"
 
@@ -135,6 +136,19 @@ func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions)
 	return parseTokensCompact(source, toks, options, nil, nil)
 }
 
+// ParseTokensCompactContext parses tokens with cancellation.
+func ParseTokensCompactContext(
+	ctx context.Context,
+	source []byte,
+	toks []token.Token,
+	options ParseOptions,
+) (*CompactFile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return parseTokensCompactContext(ctx, source, toks, options, nil, nil, true)
+}
+
 // ParseForLinter parses source without retaining tokens or trivia.
 func ParseForLinter(source []byte) *CompactFile {
 	file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
@@ -156,11 +170,26 @@ func parseTokensCompact(
 	retainedTokens []CompactToken,
 	retainedTrivia []CompactTrivia,
 ) *CompactFile {
+	file, _ := parseTokensCompactContext(context.Background(), source, toks, options, retainedTokens, retainedTrivia, false)
+	return file
+}
+
+func parseTokensCompactContext(
+	ctx context.Context,
+	source []byte,
+	toks []token.Token,
+	options ParseOptions,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+	cancellable bool,
+) (*CompactFile, error) {
 	if len(toks) == 0 || toks[len(toks)-1].Kind != token.EOF {
 		end := token.Position{Offset: len(source)}
 		toks = append(append([]token.Token(nil), toks...), token.Token{Kind: token.EOF, Start: end, End: end})
 	}
-	return parseCompact(source, newParserTokens(toks), options, retainedTokens, retainedTrivia, token.LineMap{})
+	return parseCompactContext(
+		ctx, source, newParserTokens(toks), options, retainedTokens, retainedTrivia, token.LineMap{}, cancellable,
+	)
 }
 
 func parseCompact(
@@ -171,9 +200,29 @@ func parseCompact(
 	retainedTrivia []CompactTrivia,
 	lines token.LineMap,
 ) *CompactFile {
+	file, _ := parseCompactContext(
+		context.Background(), source, toks, options, retainedTokens, retainedTrivia, lines, false,
+	)
+	return file
+}
+
+func parseCompactContext(
+	ctx context.Context,
+	source []byte,
+	toks parserTokens,
+	options ParseOptions,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+	lines token.LineMap,
+	cancellable bool,
+) (*CompactFile, error) {
 	sink := newCompactNodeSink(toks.len(), !options.DiscardTrivia)
+	var parserContext context.Context
+	if cancellable {
+		parserContext = ctx
+	}
 	p := &parser[uint32, compactNodeSink]{
-		source: source, toks: toks, sink: sink,
+		source: source, toks: toks, sink: sink, ctx: parserContext,
 	}
 	root := p.parseSourceFile()
 	p.buildDiagnosticCoverage()
@@ -196,10 +245,13 @@ func parseCompact(
 	if tokens == nil && !options.DiscardTokens {
 		tokens, trivia, origins, macroNames = compactTokens(toks.full, options)
 	}
+	if p.cancelled != nil {
+		return nil, p.cancelled
+	}
 	return &CompactFile{
 		Source: source, Tokens: tokens, Trivia: trivia, Origins: origins, MacroNames: macroNames, Lines: lines,
 		Tree: sink.tree(root), Broken: p.broken, Diagnostics: p.diagnostics,
-	}
+	}, nil
 }
 
 // CompactToken stores one token with indexed metadata.

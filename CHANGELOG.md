@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 - 2026-07-26
+
+### Added
+
+- Added cancellable compact parsing for editor analysis.
+
 ## 1.2.0 - 2026-07-26
 
 ### Added
