@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 - 2026-07-26
+
+### Fixed
+
+- Keep function bodies available inside conditional regions after syntax errors.
+
 ## 1.4.0 - 2026-07-26
 
 ### Added

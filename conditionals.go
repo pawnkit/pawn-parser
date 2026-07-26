@@ -202,9 +202,6 @@ func (p *parser[N, S]) conditionalNeedsSharedFallback(region N, source []byte) b
 				p.sink.Kind(item) == KindSharedConditional || p.sink.Kind(item) == KindConditionalFunction {
 				continue
 			}
-			if p.sink.HasError(item) {
-				return true
-			}
 			if p.sink.Kind(item) == KindIfStatement {
 				consequence := p.sink.Field(item, fieldConsequence)
 				if consequence != p.sink.Nil() && p.sink.Kind(consequence) == KindEmptyStatement && p.sink.Start(consequence) == p.sink.End(consequence) {
@@ -212,7 +209,11 @@ func (p *parser[N, S]) conditionalNeedsSharedFallback(region N, source []byte) b
 				}
 			}
 			switch p.sink.Kind(item) {
-			case KindFunctionDeclaration, KindStateStatement, KindIfStatement:
+			case KindFunctionDeclaration:
+				if p.sink.HasError(item) && p.sink.Field(item, fieldBody) == p.sink.Nil() {
+					return true
+				}
+			case KindStateStatement, KindIfStatement:
 				if p.sink.HasError(item) {
 					return true
 				}

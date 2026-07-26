@@ -328,6 +328,20 @@ func TestParseConditionalRegionClean(t *testing.T) {
 	}
 }
 
+func TestConditionalRegionKeepsErroredFunctionBody(t *testing.T) {
+	t.Parallel()
+	src := "#if FEATURE\nstock Work() {\n Missing\n return 0;\n}\n#endif\n"
+	pointer := Parse([]byte(src))
+	compact := ParseCompact([]byte(src), ParseOptions{})
+	if got := pointer.Root.Children[0].Kind; got != KindConditionalRegion {
+		t.Fatalf("pointer child = %s", got)
+	}
+	children := compact.Syntax().Children()
+	if !children.Next() || children.Node().Kind() != KindConditionalRegion {
+		t.Fatalf("compact parser discarded the conditional body")
+	}
+}
+
 func TestParseEnum(t *testing.T) {
 	t.Parallel()
 	src := "enum E_PLAYER_DATA\n{\n    bool:pLoggedIn,\n    pScore,\n    Float:pHealth,\n}\n"
