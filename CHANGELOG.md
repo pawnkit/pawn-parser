@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2 - 2026-07-29
+
+### Changed
+
+- Reduced allocations when expanding compact syntax.
+
 ## 1.5.1 - 2026-07-29
 
 ### Added

@@ -12,13 +12,8 @@ func (f *CompactFile) ExpandWithOptions(options ParseOptions) *File {
 	if f == nil {
 		return nil
 	}
-	tokens := f.expandTokens()
-	if options.DiscardTrivia {
-		for i := range tokens {
-			tokens[i].LeadingTrivia = nil
-			tokens[i].TrailingTrivia = nil
-		}
-	}
+	storage := new(parserStorage)
+	tokens := f.expandTokens(storage, options.DiscardTrivia)
 	nodes := make([]*Node, len(f.Tree.Nodes))
 	tokenBySpan := make(map[compactTokenKey]token.Token, len(tokens))
 	for _, tok := range tokens {
@@ -26,7 +21,8 @@ func (f *CompactFile) ExpandWithOptions(options ParseOptions) *File {
 	}
 	for i, compact := range f.Tree.Nodes {
 		tok := tokenBySpan[compactTokenKey{compact.TokenKind, int(compact.TokenStart), int(compact.TokenEnd)}]
-		nodes[i] = &Node{
+		nodes[i] = storage.arena.alloc()
+		*nodes[i] = Node{
 			Kind: compact.Kind, Tok: tok, Start: int(compact.Start), End: int(compact.End),
 			HasError: compact.HasError, MissingSemi: compact.MissingSemi,
 			Leading: tok.LeadingTrivia, Trailing: tok.TrailingTrivia,
@@ -37,15 +33,18 @@ func (f *CompactFile) ExpandWithOptions(options ParseOptions) *File {
 	}
 	for i, compact := range f.Tree.Nodes {
 		node := nodes[i]
-		for _, child := range f.Tree.Children[compact.ChildStart : compact.ChildStart+compact.ChildCount] {
-			node.Children = append(node.Children, nodes[child])
+		if compact.ChildCount != 0 {
+			node.Children = storage.children.alloc(int(compact.ChildCount))[:0]
+			for _, child := range f.Tree.Children[compact.ChildStart : compact.ChildStart+compact.ChildCount] {
+				node.Children = append(node.Children, nodes[child])
+			}
 		}
 		if len(node.Children) != 0 {
 			node.Leading = node.Children[0].Leading
 			node.Trailing = node.Children[len(node.Children)-1].Trailing
 		}
 		for _, field := range f.Tree.Fields[compact.FieldStart : compact.FieldStart+compact.FieldCount] {
-			setExpandedField(node, field.ID, nodes[field.Node])
+			setPointerField(storage, node, field.ID, nodes[field.Node])
 		}
 	}
 	for _, compact := range f.Tree.Errors {
@@ -79,7 +78,7 @@ type compactTokenKey struct {
 	start, end int
 }
 
-func (f *CompactFile) expandTokens() []token.Token {
+func (f *CompactFile) expandTokens(storage *parserStorage, discardTrivia bool) []token.Token {
 	origins := make([]*token.Origin, len(f.Origins))
 	for i := 1; i < len(origins); i++ {
 		origins[i] = new(token.Origin)
@@ -101,8 +100,10 @@ func (f *CompactFile) expandTokens() []token.Token {
 	for i, compact := range f.Tokens {
 		tokens[i] = token.Token{
 			Kind: compact.Kind, Start: expandPosition(compact.Start), End: expandPosition(compact.End),
-			LeadingTrivia:  f.expandTrivia(compact.LeadingStart, compact.LeadingCount),
-			TrailingTrivia: f.expandTrivia(compact.TrailingStart, compact.TrailingCount),
+		}
+		if !discardTrivia {
+			tokens[i].LeadingTrivia = f.expandTrivia(storage, compact.LeadingStart, compact.LeadingCount)
+			tokens[i].TrailingTrivia = f.expandTrivia(storage, compact.TrailingStart, compact.TrailingCount)
 		}
 		if compact.Origin < uint32(len(origins)) { // #nosec G115 -- Compact indexes are uint32.
 			tokens[i].Origin = origins[compact.Origin]
@@ -111,12 +112,12 @@ func (f *CompactFile) expandTokens() []token.Token {
 	return tokens
 }
 
-func (f *CompactFile) expandTrivia(start, count uint32) []token.Trivia {
+func (f *CompactFile) expandTrivia(storage *parserStorage, start, count uint32) []token.Trivia {
 	end := start + count
 	if end < start || end > uint32(len(f.Trivia)) { // #nosec G115 -- Compact indexes are uint32.
 		return nil
 	}
-	trivia := make([]token.Trivia, count)
+	trivia := storage.trivia.alloc(int(count))
 	for i, compact := range f.Trivia[start:end] {
 		trivia[i] = token.Trivia{
 			Kind: compact.Kind, Start: expandPosition(compact.Start), End: expandPosition(compact.End),
@@ -127,17 +128,4 @@ func (f *CompactFile) expandTrivia(start, count uint32) []token.Trivia {
 
 func expandPosition(position CompactPosition) token.Position {
 	return token.Position{Offset: int(position.Offset), Line: int(position.Line), Col: int(position.Col)}
-}
-
-func setExpandedField(node *Node, id FieldID, child *Node) {
-	if node.fieldData == nil {
-		node.fieldData = new(nodeFieldData)
-	}
-	entry := fieldEntry{id: id, node: child}
-	if node.fieldData.count < len(node.fieldData.inline) {
-		node.fieldData.inline[node.fieldData.count] = entry
-	} else {
-		node.fieldData.spill = append(node.fieldData.spill, entry)
-	}
-	node.fieldData.count++
 }
