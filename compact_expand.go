@@ -4,10 +4,21 @@ import "github.com/pawnkit/pawn-parser/token"
 
 // Expand builds the pointer CST represented by f.
 func (f *CompactFile) Expand() *File {
+	return f.ExpandWithOptions(ParseOptions{})
+}
+
+// ExpandWithOptions builds the pointer CST represented by f.
+func (f *CompactFile) ExpandWithOptions(options ParseOptions) *File {
 	if f == nil {
 		return nil
 	}
 	tokens := f.expandTokens()
+	if options.DiscardTrivia {
+		for i := range tokens {
+			tokens[i].LeadingTrivia = nil
+			tokens[i].TrailingTrivia = nil
+		}
+	}
 	nodes := make([]*Node, len(f.Tree.Nodes))
 	tokenBySpan := make(map[compactTokenKey]token.Token, len(tokens))
 	for _, tok := range tokens {
@@ -53,6 +64,9 @@ func (f *CompactFile) Expand() *File {
 	var root *Node
 	if f.Tree.Root < uint32(len(nodes)) { // #nosec G115 -- Compact indexes are uint32.
 		root = nodes[f.Tree.Root]
+	}
+	if options.DiscardTokens {
+		tokens = nil
 	}
 	return &File{
 		Source: f.Source, Tokens: tokens, Root: root, Broken: f.Broken,

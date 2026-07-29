@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 - 2026-07-29
+
+### Added
+
+- Expand compact syntax with the caller's token and trivia retention options.
+
 ## 1.5.0 - 2026-07-29
 
 ### Added

@@ -58,6 +58,32 @@ func TestParseCompactPreservesTreeShapeAndFields(t *testing.T) {
 	assertEquivalentNodes(t, pointerFile.Root, ParseCompact(source, ParseOptions{}).Expand().Root)
 }
 
+func TestCompactExpandWithOptionsDiscardsRetainedData(t *testing.T) {
+	t.Parallel()
+
+	compact := ParseCompact([]byte("// note\nmain() {}\n"), ParseOptions{})
+	expanded := compact.ExpandWithOptions(ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+	if expanded == nil || expanded.Root == nil {
+		t.Fatal("expanded tree is nil")
+	}
+	if expanded.Tokens != nil {
+		t.Fatalf("tokens = %d, want nil", len(expanded.Tokens))
+	}
+	var visit func(*Node)
+	visit = func(node *Node) {
+		if node == nil {
+			return
+		}
+		if len(node.Leading) != 0 || len(node.Trailing) != 0 {
+			t.Fatalf("%s retained trivia", node.Kind)
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(expanded.Root)
+}
+
 func TestCompactTreeContainsOnlyReachableNodes(t *testing.T) {
 	t.Parallel()
 	source := []byte("enum Color { Red, Green }\nforward Float:GetValue(Float:value);\n")
