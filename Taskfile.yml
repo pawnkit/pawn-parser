@@ -64,3 +64,10 @@ tasks:
     desc: Fuzz the parser for 30s
     cmds:
       - go test . -run=^$ -fuzz=FuzzParse -fuzztime=30s
+
+  compiler:
+    desc: Compare parser acceptance with pawncc
+    cmds:
+      - test -n "${PAWN_PARSER_PAWNCC:-}" || { echo "set PAWN_PARSER_PAWNCC"; exit 1; }
+      - test -n "${PAWN_CORPUS_DIR:-}" || { echo "set PAWN_CORPUS_DIR"; exit 1; }
+      - go test -count=1 -run '^TestCompilerAcceptanceDifferential$' .

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.2 - 2026-07-29
+
+### Added
+
+- Compare parser and pawncc acceptance for shared compiler probes.
+
 ## 1.4.1 - 2026-07-26
 
 ### Fixed
