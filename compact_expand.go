@@ -1,6 +1,10 @@
 package parser
 
-import "github.com/pawnkit/pawn-parser/token"
+import (
+	"sort"
+
+	"github.com/pawnkit/pawn-parser/token"
+)
 
 // Expand builds the pointer CST represented by f.
 func (f *CompactFile) Expand() *File {
@@ -24,12 +28,8 @@ func (f *CompactFile) ExpandTokensWithOptions(tokens []token.Token, options Pars
 		tokens = retainedTokens(tokens, options)
 	}
 	nodes := make([]*Node, len(f.Tree.Nodes))
-	tokenBySpan := make(map[compactTokenKey]token.Token, len(tokens))
-	for _, tok := range tokens {
-		tokenBySpan[compactTokenKey{tok.Kind, tok.Start.Offset, tok.End.Offset}] = tok
-	}
 	for i, compact := range f.Tree.Nodes {
-		tok := tokenBySpan[compactTokenKey{compact.TokenKind, int(compact.TokenStart), int(compact.TokenEnd)}]
+		tok := expandedNodeToken(tokens, compact)
 		nodes[i] = storage.arena.alloc()
 		*nodes[i] = Node{
 			Kind: compact.Kind, Tok: tok, Start: int(compact.Start), End: int(compact.End),
@@ -82,9 +82,19 @@ func (f *CompactFile) ExpandTokensWithOptions(tokens []token.Token, options Pars
 	}
 }
 
-type compactTokenKey struct {
-	kind       token.Kind
-	start, end int
+func expandedNodeToken(tokens []token.Token, node CompactNode) token.Token {
+	start := int(node.TokenStart)
+	index := sort.Search(len(tokens), func(i int) bool {
+		return tokens[i].Start.Offset >= start
+	})
+	for index < len(tokens) && tokens[index].Start.Offset == start {
+		item := tokens[index]
+		if item.Kind == node.TokenKind && item.End.Offset == int(node.TokenEnd) {
+			return item
+		}
+		index++
+	}
+	return token.Token{}
 }
 
 func (f *CompactFile) expandTokens(storage *parserStorage, discardTrivia bool) []token.Token {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4 - 2026-07-29
+
+### Changed
+
+- Reduced compact expansion memory by removing its token lookup map.
+
 ## 1.5.3 - 2026-07-29
 
 ### Added
