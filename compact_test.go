@@ -84,6 +84,21 @@ func TestCompactExpandWithOptionsDiscardsRetainedData(t *testing.T) {
 	visit(expanded.Root)
 }
 
+func TestCompactExpandUsesOriginalTokens(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("// note\nmain() {}\n")
+	tokens := lexer.Tokenize(source)
+	compact := ParseTokensCompact(source, tokens, ParseOptions{})
+	expanded := compact.ExpandTokensWithOptions(tokens, ParseOptions{})
+	if len(expanded.Tokens) == 0 || &expanded.Tokens[0] != &tokens[0] {
+		t.Fatal("expanded syntax did not retain the original tokens")
+	}
+	if expanded.Root == nil || expanded.Root.HasError {
+		t.Fatal("expanded tree is not clean")
+	}
+}
+
 func TestCompactTreeContainsOnlyReachableNodes(t *testing.T) {
 	t.Parallel()
 	source := []byte("enum Color { Red, Green }\nforward Float:GetValue(Float:value);\n")

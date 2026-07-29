@@ -9,11 +9,20 @@ func (f *CompactFile) Expand() *File {
 
 // ExpandWithOptions builds the pointer CST represented by f.
 func (f *CompactFile) ExpandWithOptions(options ParseOptions) *File {
+	return f.ExpandTokensWithOptions(nil, options)
+}
+
+// ExpandTokensWithOptions builds the pointer CST with its original tokens.
+func (f *CompactFile) ExpandTokensWithOptions(tokens []token.Token, options ParseOptions) *File {
 	if f == nil {
 		return nil
 	}
 	storage := new(parserStorage)
-	tokens := f.expandTokens(storage, options.DiscardTrivia)
+	if tokens == nil {
+		tokens = f.expandTokens(storage, options.DiscardTrivia)
+	} else {
+		tokens = retainedTokens(tokens, options)
+	}
 	nodes := make([]*Node, len(f.Tree.Nodes))
 	tokenBySpan := make(map[compactTokenKey]token.Token, len(tokens))
 	for _, tok := range tokens {

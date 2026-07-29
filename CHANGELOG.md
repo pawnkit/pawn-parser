@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3 - 2026-07-29
+
+### Added
+
+- Expand compact syntax with an existing token stream.
+
 ## 1.5.2 - 2026-07-29
 
 ### Changed
