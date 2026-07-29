@@ -129,6 +129,10 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test ./... -run=^$ -bench=. -benchmem
+      - name: Check parser performance budget
+        env:
+          PAWNKIT_PERFORMANCE_BUDGET: "1"
+        run: go test -count=1 -run '^TestCompactParserPerformanceBudget$' .
 
   support:
     runs-on: ubuntu-latest

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.5 - 2026-07-29
+
+### Performance
+
+- Reduced compact syntax memory growth on large files.
+- Added a performance budget for compact parsing.
+
 ## 1.5.4 - 2026-07-29
 
 ### Changed

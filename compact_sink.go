@@ -167,6 +167,15 @@ func (s compactNodeSink) New(kind Kind) uint32 {
 }
 
 func (s compactNodeSink) Store(value Node) uint32 {
+	if len(s.builder.nodes) == cap(s.builder.nodes) {
+		capacity := cap(s.builder.nodes) + cap(s.builder.nodes)/4 + 64
+		nodes := make([]compactBuildNode, len(s.builder.nodes), capacity)
+		copy(nodes, s.builder.nodes)
+		s.builder.nodes = nodes
+		records := make([]CompactNode, len(s.builder.records), capacity)
+		copy(records, s.builder.records)
+		s.builder.records = records
+	}
 	id := compactUint(len(s.builder.nodes))
 	s.builder.nodes = append(s.builder.nodes, compactBuildNode{})
 	s.builder.records = append(s.builder.records, CompactNode{

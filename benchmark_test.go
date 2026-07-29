@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pawnkit/pawn-parser/lexer"
 )
@@ -81,6 +82,54 @@ func BenchmarkParseForLinterLargeFile(b *testing.B) {
 
 func BenchmarkParseCompactLargeFile(b *testing.B) {
 	source := benchmarkSource(b)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	b.ResetTimer()
+	for range b.N {
+		file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+		if len(file.Tree.Nodes) == 0 {
+			b.Fatal("ParseCompact returned no tree")
+		}
+	}
+}
+
+//nolint:paralleltest // Measures process-local resource use.
+func TestCompactParserPerformanceBudget(t *testing.T) {
+	if os.Getenv("PAWNKIT_PERFORMANCE_BUDGET") == "" {
+		t.Skip("set PAWNKIT_PERFORMANCE_BUDGET to run performance budgets")
+	}
+	source, err := os.ReadFile(benchmarkFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parse := func() {
+		file := ParseCompact(source, ParseOptions{DiscardTokens: true, DiscardTrivia: true})
+		if len(file.Tree.Nodes) == 0 {
+			t.Fatal("ParseCompact returned no tree")
+		}
+	}
+	parse()
+	allocations := testing.AllocsPerRun(3, parse)
+	start := time.Now()
+	parse()
+	elapsed := time.Since(start)
+	if allocations > 120_000 {
+		t.Fatalf("ParseCompact allocations = %.0f, budget = 120000", allocations)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("ParseCompact duration = %s, budget = 500ms", elapsed)
+	}
+}
+
+func BenchmarkParseCompactExternalFile(b *testing.B) {
+	path := os.Getenv("PAWN_PARSER_BENCH_FILE")
+	if path == "" {
+		b.Skip()
+	}
+	source, err := os.ReadFile(path) //nolint:gosec // Developer-supplied benchmark path.
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ReportAllocs()
 	b.SetBytes(int64(len(source)))
 	b.ResetTimer()
