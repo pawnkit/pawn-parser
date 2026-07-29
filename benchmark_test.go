@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
@@ -100,6 +101,36 @@ func BenchmarkParseCompactRetainedLargeFile(b *testing.B) {
 		file := ParseCompact(source, ParseOptions{})
 		if len(file.Tree.Nodes) == 0 || len(file.Tokens) == 0 {
 			b.Fatal("ParseCompact returned incomplete syntax")
+		}
+	}
+}
+
+func BenchmarkRebaseCompactTriviaLargeFile(b *testing.B) {
+	before := benchmarkSource(b)
+	start := bytes.IndexByte(before, ' ')
+	if start < 0 {
+		b.Fatal("fixture has no whitespace")
+	}
+	after := make([]byte, 0, len(before)+1)
+	after = append(after, before[:start]...)
+	after = append(after, ' ')
+	after = append(after, before[start:]...)
+	previous := ParseTokensCompact(before, lexer.Tokenize(before), ParseOptions{})
+	tokens := lexer.Tokenize(after)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(after)))
+	b.ResetTimer()
+	for range b.N {
+		file, ok := RebaseCompactTrivia(
+			after,
+			tokens,
+			previous,
+			ByteRange{Start: start, End: start},
+			ByteRange{Start: start, End: start + 1},
+		)
+		if !ok || len(file.Tree.Nodes) == 0 {
+			b.Fatal("RebaseCompactTrivia returned no tree")
 		}
 	}
 }

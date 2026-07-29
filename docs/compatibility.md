@@ -25,6 +25,10 @@ Everything under `internal` is internal and has no compatibility promise.
 New exported helpers start as preview when their release notes say so; they
 become stable only after this document names them.
 
+`RebaseCompactTrivia` is a preview helper for incremental analysis. It returns
+false when an edit could change the grammar, so callers must keep a full-parse
+fallback.
+
 Each minor release is checked with Go's `apidiff` against the previous stable
 tag. Parser output may become more accurate in minor releases: valid syntax can
 produce a better tree, and invalid syntax can produce different recovery nodes

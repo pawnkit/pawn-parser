@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 - 2026-07-29
+
+### Added
+
+- Rebase clean compact trees after grammar-neutral trivia edits.
+
 ## 1.4.2 - 2026-07-29
 
 ### Added
