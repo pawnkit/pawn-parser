@@ -184,6 +184,43 @@ func BenchmarkRebaseCompactTriviaLargeFile(b *testing.B) {
 	}
 }
 
+func BenchmarkReparseCompactDeclarationLargeFile(b *testing.B) {
+	before := benchmarkSource(b)
+	start := bytes.LastIndex(before, []byte("return"))
+	if start < 0 {
+		b.Fatal("fixture has no return statement")
+	}
+	start += len("return ")
+	after := make([]byte, 0, len(before)+2)
+	after = append(after, before[:start]...)
+	after = append(after, '(')
+	after = append(after, before[start:]...)
+	end := bytes.IndexByte(after[start+1:], ';')
+	if end < 0 {
+		b.Fatal("fixture return has no semicolon")
+	}
+	end += start + 1
+	after = append(after[:end], append([]byte{')'}, after[end:]...)...)
+	previous := ParseTokensCompact(before, lexer.Tokenize(before), ParseOptions{})
+	tokens := lexer.Tokenize(after)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(after)))
+	b.ResetTimer()
+	for range b.N {
+		file, ok := ReparseCompactDeclaration(
+			after,
+			tokens,
+			previous,
+			ByteRange{Start: start, End: end - 1},
+			ByteRange{Start: start, End: end + 1},
+		)
+		if !ok || len(file.Tree.Nodes) == 0 {
+			b.Fatal("ReparseCompactDeclaration returned no tree")
+		}
+	}
+}
+
 func BenchmarkTokensOnlyLargeFile(b *testing.B) {
 	source := benchmarkSource(b)
 	b.ReportAllocs()

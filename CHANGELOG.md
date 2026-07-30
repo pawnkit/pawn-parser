@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.6 - 2026-07-30
+
+### Performance
+
+- Reparse a single changed top-level declaration when the surrounding syntax is unchanged.
+
 ## 1.5.5 - 2026-07-29
 
 ### Performance
