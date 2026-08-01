@@ -39,7 +39,6 @@ exact shape of an error-recovery tree.
 
 - A missing statement semicolon is recorded on the syntax node but does not add
   a file diagnostic.
-- An unterminated preprocessor conditional at end of file is not yet diagnosed.
 
 The shared corpus test tracks both cases. They remain outside the passing
 conformance set until their diagnostic behavior is settled.
