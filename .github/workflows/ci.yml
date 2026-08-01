@@ -116,6 +116,7 @@ jobs:
         env:
           PAWN_CORPUS_DIR: ${{ github.workspace }}/pawn-corpus
           PAWN_PARSER_PAWNCC: ${{ github.workspace }}/pawnc-3.10.10-linux/bin/pawncc
+          LD_LIBRARY_PATH: ${{ github.workspace }}/pawnc-3.10.10-linux/lib
         run: go test -count=1 -run '^TestCompilerAcceptanceDifferential$' .
 
   benchmark:

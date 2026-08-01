@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.7 - 2026-08-01
+
+### Fixed
+
+- Set the Pawn compiler library path in the differential CI job.
+
 ## 1.5.6 - 2026-07-30
 
 ### Performance
