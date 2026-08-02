@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.9 - 2026-08-02
+
+### Changed
+
+- Use the current `pawnkit-core` v0.5.0 release.
+
 ## 1.5.8 - 2026-08-02
 
 ### Added
