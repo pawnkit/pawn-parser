@@ -8,6 +8,7 @@ import (
 )
 
 func TestSourceMapThroughMacroExpansion(t *testing.T) {
+	t.Parallel()
 	src := "#define SQR(%0) ((%0) * (%0))\nnew x = SQR(zones);\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 
@@ -40,6 +41,7 @@ func TestSourceMapThroughMacroExpansion(t *testing.T) {
 }
 
 func TestSourceMapNestedExpansion(t *testing.T) {
+	t.Parallel()
 	src := "#define INNER(%0) ((%0)+1)\n#define OUTER(%0) INNER(%0)\nnew x = OUTER(5);\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 
@@ -57,6 +59,7 @@ func TestSourceMapNestedExpansion(t *testing.T) {
 }
 
 func TestSourceMapLiteralBodyToken(t *testing.T) {
+	t.Parallel()
 	src := "#define GREETING hello_world\nnew x = GREETING;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 
@@ -89,6 +92,7 @@ func TestSourceMapLiteralBodyToken(t *testing.T) {
 }
 
 func TestSourceMapMacroDefinedInInclude(t *testing.T) {
+	t.Parallel()
 	src := "#include \"defs.inc\"\nnew x = VALUE;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{Resolver: preprocess.MapResolver{
 		"defs.inc": []byte("#define VALUE included_value\n"),

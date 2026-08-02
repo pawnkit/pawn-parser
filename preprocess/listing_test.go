@@ -12,7 +12,7 @@ func TestListingMatchesPawnCC31010ForSimpleSource(t *testing.T) {
 	t.Parallel()
 
 	result := preprocess.Run([]byte("main()\n    return 0\n"), preprocess.Options{
-		URI:     "main.pwn",
+		URI:     "main.pwn", //nolint:goconst // The URI is part of the listing fixture.
 		Listing: &preprocess.ListingOptions{},
 	})
 	want := []byte("#pragma ctrlchar 0x5c\n#pragma pack false\n#pragma semicolon false\n#pragma tabsize 8\n\n#file \"main.pwn\"\n#line 1\nmain()\n    return 0\n\n")

@@ -27,6 +27,7 @@ type IncludeListingPathResolver interface {
 // angle. Useful for tests and small embedded-include scenarios.
 type MapResolver map[string][]byte
 
+// Resolve looks up an include by its exact map key.
 func (m MapResolver) Resolve(_, path string, _ bool) ([]byte, string, bool) {
 	content, ok := m[path]
 	if !ok {

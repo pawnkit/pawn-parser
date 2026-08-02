@@ -40,5 +40,5 @@ exact shape of an error-recovery tree.
 - A missing statement semicolon is recorded on the syntax node but does not add
   a file diagnostic.
 
-The shared corpus test tracks both cases. They remain outside the passing
-conformance set until their diagnostic behavior is settled.
+The shared corpus test tracks this case. It remains outside the passing
+conformance set until the missing-semicolon diagnostic behavior is settled.

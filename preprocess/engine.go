@@ -1,30 +1,14 @@
-// Package preprocess implements the Pawn preprocessor: directive parsing,
-// object-like and function-like macro expansion, conditional-compilation
-// branch tracking, and source maps from expanded tokens back to the
-// original source.
+// Package preprocess implements Pawn directives, macros, conditionals, and
+// include resolution. Results retain original tokens, branch data, expanded
+// tokens, and source mappings for diagnostics.
 //
-// Run tokenizes and processes source once, returning a [Result] that keeps
-// three views alive simultaneously, per the ecosystem's "preprocessing is a
-// first-class language stage" principle:
-//
-//   - Original: Result.OriginalTokens, the unmodified lexer output.
-//   - Active/inactive: Result.Branches records every #if/#elseif/#else
-//     branch with its body span and whether it was selected.
-//   - Expanded: Result.ExpandedTokens, the macro-expanded, directive-free
-//     token stream ready for github.com/pawnkit/pawn-parser's
-//     ParseTokensCompact. Expanded tokens carry a token.Origin chain (spelling
-//     location vs. expansion location, in the Clang sense) usable to map a
-//     diagnostic on expanded code back to where the responsible macro was
-//     invoked.
-//
-// #include/#tryinclude resolution is delegated to a caller-supplied
-// [IncludeResolver] so this package never touches the filesystem or a
-// project model directly; see docs/architecture.md for the ownership
-// rationale.
+// Include resolution is delegated to [IncludeResolver]; this package does not
+// access the filesystem or a project model.
 package preprocess
 
 import (
 	"context"
+	"maps"
 
 	"github.com/pawnkit/pawn-parser/lexer"
 	"github.com/pawnkit/pawn-parser/token"
@@ -125,8 +109,11 @@ func (o Options) resolved() Options {
 type DirectiveKind uint8
 
 const (
+	// DirectiveIf starts a conditional block.
 	DirectiveIf DirectiveKind = iota + 1
+	// DirectiveElseif continues a conditional block.
 	DirectiveElseif
+	// DirectiveElse selects the final conditional branch.
 	DirectiveElse
 )
 
@@ -417,34 +404,34 @@ type engine struct {
 // never panics on malformed input; unbalanced or truncated constructs are
 // reported as diagnostics and bounded by Options' limits.
 func Run(src []byte, opts Options) *Result {
-	result, _ := run(src, opts, context.Background(), false)
+	result, _ := run(context.Background(), src, opts, false)
 	return result
 }
 
 // RunContext preprocesses src and stops when ctx is cancelled.
 func RunContext(ctx context.Context, src []byte, opts Options) (*Result, error) {
-	return run(src, opts, ctx, true)
+	return run(ctx, src, opts, true)
 }
 
-func run(src []byte, opts Options, ctx context.Context, cancellable bool) (*Result, error) {
+func run(ctx context.Context, src []byte, opts Options, cancellable bool) (*Result, error) {
 	opts = opts.resolved()
 	discoveryOptions := opts
 	discoveryOptions.Listing = nil
-	_, declarations, err := runPass(src, discoveryOptions, ctx, cancellable, nil)
+	_, declarations, err := runPass(ctx, src, discoveryOptions, cancellable, nil)
 	if err != nil {
 		return nil, err
 	}
 	if declarations.needsReparse {
-		_, declarations, err = runPass(src, discoveryOptions, ctx, cancellable, declarations.functions)
+		_, declarations, err = runPass(ctx, src, discoveryOptions, cancellable, declarations.functions)
 		if err != nil {
 			return nil, err
 		}
 	}
-	result, _, err := runPass(src, opts, ctx, cancellable, declarations.functions)
+	result, _, err := runPass(ctx, src, opts, cancellable, declarations.functions)
 	return result, err
 }
 
-func runPass(src []byte, opts Options, ctx context.Context, cancellable bool, seedFunctions map[string]struct{}) (*Result, *declarationTracker, error) {
+func runPass(ctx context.Context, src []byte, opts Options, cancellable bool, seedFunctions map[string]struct{}) (*Result, *declarationTracker, error) {
 	if cancellable {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -518,9 +505,7 @@ func runPass(src []byte, opts Options, ctx context.Context, cancellable bool, se
 
 func cloneStringMap(values map[string]string) map[string]string {
 	cloned := make(map[string]string, len(values))
-	for name, value := range values {
-		cloned[name] = value
-	}
+	maps.Copy(cloned, values)
 	return cloned
 }
 

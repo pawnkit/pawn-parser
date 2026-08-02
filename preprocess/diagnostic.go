@@ -9,26 +9,46 @@ import (
 type Code string
 
 const (
+	// CodeUnterminatedConditional reports an unclosed conditional block.
 	CodeUnterminatedConditional Code = "preprocess/unterminated-conditional"
-	CodeUnmatchedElseif         Code = "preprocess/unmatched-elseif"
-	CodeUnmatchedElse           Code = "preprocess/unmatched-else"
-	CodeUnmatchedEndif          Code = "preprocess/unmatched-endif"
-	CodeConditionalDepthLimit   Code = "preprocess/conditional-depth-limit"
-	CodeUnresolvableCondition   Code = "preprocess/unresolvable-condition"
-	CodeUnknownDirective        Code = "preprocess/unknown-directive"
-	CodeMalformedDefine         Code = "preprocess/malformed-define"
-	CodeMacroArgumentMismatch   Code = "preprocess/macro-argument-mismatch"
-	CodeUnterminatedInvocation  Code = "preprocess/unterminated-macro-invocation"
-	CodeExpansionDepthLimit     Code = "preprocess/expansion-depth-limit"
-	CodeOutputSizeLimit         Code = "preprocess/output-size-limit"
-	CodeMalformedInclude        Code = "preprocess/malformed-include"
-	CodeIncludeNotFound         Code = "preprocess/include-not-found"
-	CodeIncludeCycle            Code = "preprocess/include-cycle"
-	CodeIncludeDepthLimit       Code = "preprocess/include-depth-limit"
-	CodeUserError               Code = "preprocess/user-error"
-	CodeUserWarning             Code = "preprocess/user-warning"
-	CodeAssertFailed            Code = "preprocess/assert-failed"
-	CodeAssertUnknown           Code = "preprocess/assert-unknown"
+	// CodeUnmatchedElseif reports an #elseif without a matching #if.
+	CodeUnmatchedElseif Code = "preprocess/unmatched-elseif"
+	// CodeUnmatchedElse reports an #else without a matching #if.
+	CodeUnmatchedElse Code = "preprocess/unmatched-else"
+	// CodeUnmatchedEndif reports an #endif without a matching #if.
+	CodeUnmatchedEndif Code = "preprocess/unmatched-endif"
+	// CodeConditionalDepthLimit reports a conditional nesting limit.
+	CodeConditionalDepthLimit Code = "preprocess/conditional-depth-limit"
+	// CodeUnresolvableCondition reports a condition that cannot be evaluated.
+	CodeUnresolvableCondition Code = "preprocess/unresolvable-condition"
+	// CodeUnknownDirective reports an unsupported directive.
+	CodeUnknownDirective Code = "preprocess/unknown-directive"
+	// CodeMalformedDefine reports an invalid macro definition.
+	CodeMalformedDefine Code = "preprocess/malformed-define"
+	// CodeMacroArgumentMismatch reports a macro argument count mismatch.
+	CodeMacroArgumentMismatch Code = "preprocess/macro-argument-mismatch"
+	// CodeUnterminatedInvocation reports an unclosed macro invocation.
+	CodeUnterminatedInvocation Code = "preprocess/unterminated-macro-invocation"
+	// CodeExpansionDepthLimit reports a macro expansion depth limit.
+	CodeExpansionDepthLimit Code = "preprocess/expansion-depth-limit"
+	// CodeOutputSizeLimit reports an expanded output size limit.
+	CodeOutputSizeLimit Code = "preprocess/output-size-limit"
+	// CodeMalformedInclude reports an invalid include directive.
+	CodeMalformedInclude Code = "preprocess/malformed-include"
+	// CodeIncludeNotFound reports a missing required include.
+	CodeIncludeNotFound Code = "preprocess/include-not-found"
+	// CodeIncludeCycle reports a recursive include.
+	CodeIncludeCycle Code = "preprocess/include-cycle"
+	// CodeIncludeDepthLimit reports an include nesting limit.
+	CodeIncludeDepthLimit Code = "preprocess/include-depth-limit"
+	// CodeUserError reports a source #error directive.
+	CodeUserError Code = "preprocess/user-error"
+	// CodeUserWarning reports a source #warning directive.
+	CodeUserWarning Code = "preprocess/user-warning"
+	// CodeAssertFailed reports a failed #assert directive.
+	CodeAssertFailed Code = "preprocess/assert-failed"
+	// CodeAssertUnknown reports an unevaluable #assert directive.
+	CodeAssertUnknown Code = "preprocess/assert-unknown"
 )
 
 // ByteRange is a half-open source byte range within one file (see

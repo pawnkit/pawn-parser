@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.8 - 2026-08-02
+
+### Added
+
+- Added a bounded Pawn preprocessor for directives, macros, conditionals, and
+  include resolution, with source mappings and cancellation support.
+- Added preprocessor reuse and token-cache helpers for incremental consumers.
+
 ## 1.5.7 - 2026-08-01
 
 ### Fixed

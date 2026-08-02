@@ -80,6 +80,7 @@ func ReuseCompatibleContextWithEdit(
 	return reuseCompatibleContext(ctx, src, uri, cache, previous, &known)
 }
 
+//nolint:gocyclo // Reuse validation must reject unsafe edits conservatively.
 func reuseCompatibleContext(
 	ctx context.Context,
 	src []byte,

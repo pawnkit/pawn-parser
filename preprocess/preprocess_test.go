@@ -17,6 +17,7 @@ type delayedCancelContext struct {
 }
 
 func TestForwardingMacroExposesReplacementCallable(t *testing.T) {
+	t.Parallel()
 	result := preprocess.Run([]byte("#define PlayerDialog_Show(%0,%1, \\\n Dialog_Open(%0,#%1,\n"), preprocess.Options{})
 	macro, ok := result.Macros["PlayerDialog_Show"]
 	if !ok {
@@ -51,6 +52,7 @@ func expandedText(t *testing.T, r *preprocess.Result) string {
 }
 
 func TestRunContextStopsDuringPreprocessing(t *testing.T) {
+	t.Parallel()
 	src := []byte("#define DUP(%0) %0 %0\n" + strings.Repeat("DUP(value)\n", 2_000))
 	ctx := &delayedCancelContext{after: 1}
 
@@ -64,6 +66,7 @@ func TestRunContextStopsDuringPreprocessing(t *testing.T) {
 }
 
 func TestObjectMacroExpansion(t *testing.T) {
+	t.Parallel()
 	src := "#define MAX_ZONES 32\nnew zones = MAX_ZONES;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(r.Diagnostics) != 0 {
@@ -79,7 +82,7 @@ func TestImplicitPrefixIsProcessedBeforeRootSource(t *testing.T) {
 	t.Parallel()
 
 	result := preprocess.Run([]byte("new root = PREFIX_VALUE;\n"), preprocess.Options{
-		URI:    "main.pwn",
+		URI:    "main.pwn", //nolint:goconst // The URI is part of the source fixture.
 		Prefix: "default.inc",
 		Resolver: preprocess.MapResolver{
 			"default.inc": []byte("#define PREFIX_VALUE 7\nnew prefix;\n"),
@@ -129,6 +132,7 @@ func TestMissingOptionalImplicitPrefixIsSilent(t *testing.T) {
 }
 
 func TestFunctionMacroExpansion(t *testing.T) {
+	t.Parallel()
 	src := "#define SQR(%0) ((%0) * (%0))\nnew x = SQR(zones + 1);\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -139,6 +143,7 @@ func TestFunctionMacroExpansion(t *testing.T) {
 }
 
 func TestMacroInvocationsRetainSourceRanges(t *testing.T) {
+	t.Parallel()
 	src := "#define VALUE 1\n#define SQR(%0) ((%0) * (%0))\nnew x = VALUE + SQR(2);\n"
 	result := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(result.MacroInvocations) != 2 {
@@ -154,6 +159,7 @@ func TestMacroInvocationsRetainSourceRanges(t *testing.T) {
 }
 
 func TestFunctionMacroArgumentRepetition(t *testing.T) {
+	t.Parallel()
 	src := "#define TWICE(%0) %0 %0\nTWICE(zones++;)\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -163,6 +169,7 @@ func TestFunctionMacroArgumentRepetition(t *testing.T) {
 }
 
 func TestFunctionMacroFinalParameterConsumesCommas(t *testing.T) {
+	t.Parallel()
 	src := "#define COPY(%0,%1) (%0 = %1)\nCOPY(value, 1, 2)\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(r.Diagnostics) != 0 {
@@ -174,6 +181,7 @@ func TestFunctionMacroFinalParameterConsumesCommas(t *testing.T) {
 }
 
 func TestFunctionMacroAcceptsEmptyArgument(t *testing.T) {
+	t.Parallel()
 	src := "#define EMPTY(%0) value\nEMPTY()\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(r.Diagnostics) != 0 {
@@ -185,6 +193,7 @@ func TestFunctionMacroAcceptsEmptyArgument(t *testing.T) {
 }
 
 func TestEmitDirectiveIsAccepted(t *testing.T) {
+	t.Parallel()
 	r := preprocess.Run([]byte("#emit CONST.pri 1\n"), preprocess.Options{})
 	if len(r.Diagnostics) != 0 {
 		t.Fatalf("unexpected diagnostics: %+v", r.Diagnostics)
@@ -192,6 +201,7 @@ func TestEmitDirectiveIsAccepted(t *testing.T) {
 }
 
 func TestPrefixMacroDoesNotReportArgumentMismatch(t *testing.T) {
+	t.Parallel()
 	src := "#define main( ALS_main_:PP_main(\nmain() {}\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(r.Diagnostics) != 0 {
@@ -200,6 +210,7 @@ func TestPrefixMacroDoesNotReportArgumentMismatch(t *testing.T) {
 }
 
 func TestMultiArgFunctionMacro(t *testing.T) {
+	t.Parallel()
 	src := "#define CLAMP(%0,%1,%2) ((%0) < (%1) ? (%1) : ((%0) > (%2) ? (%2) : (%0)))\n" +
 		"new c = CLAMP(zones, 0, 16);\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
@@ -213,6 +224,7 @@ func TestMultiArgFunctionMacro(t *testing.T) {
 }
 
 func TestMacroParameterLabelsUseDeclarationOrder(t *testing.T) {
+	t.Parallel()
 	src := "#define PICK(%1) (%1)\n" +
 		"#define PAIR(%0,%2) ((%0) + (%2))\n" +
 		"new value = PICK(3) + PAIR(4, 5);\n"
@@ -227,6 +239,7 @@ func TestMacroParameterLabelsUseDeclarationOrder(t *testing.T) {
 }
 
 func TestNamedParamMacro(t *testing.T) {
+	t.Parallel()
 	src := "#define ADD(a,b) ((a) + (b))\nnew x = ADD(1, 2);\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -236,7 +249,9 @@ func TestNamedParamMacro(t *testing.T) {
 }
 
 func TestMacroSelfReferenceDoesNotRecurse(t *testing.T) {
-	src := "#define FOO FOO + 1\nnew x = FOO;\n"
+	t.Parallel()
+	foo := "FOO"
+	src := "#define " + foo + " " + foo + " + 1\nnew x = " + foo + ";\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
 	if !strings.Contains(got, "FOO + 1") {
@@ -245,6 +260,7 @@ func TestMacroSelfReferenceDoesNotRecurse(t *testing.T) {
 }
 
 func TestUndef(t *testing.T) {
+	t.Parallel()
 	src := "#define FOO 1\n#undef FOO\nnew x = FOO;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -254,6 +270,7 @@ func TestUndef(t *testing.T) {
 }
 
 func TestConditionalCompilationDefined(t *testing.T) {
+	t.Parallel()
 	src := "#define FEATURE\n#if defined FEATURE\nnew a = 1;\n#else\nnew a = 2;\n#endif\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -370,6 +387,7 @@ new enum_field_size = 0;
 }
 
 func TestDefinedObservesEarlierFunctionDeclarations(t *testing.T) {
+	t.Parallel()
 	src := `native __print(const value[]);
 forward Future(value);
 stock Implemented(value)
@@ -438,6 +456,7 @@ new selected;
 }
 
 func TestDefinedObservesVariablesAndFunctionParametersInScope(t *testing.T) {
+	t.Parallel()
 	src := `new globalValue;
 #if defined globalValue
 new globalSelected;
@@ -466,6 +485,7 @@ main(playerid)
 }
 
 func TestListingPassSeedsFunctionsDiscoveredLaterInFirstPass(t *testing.T) {
+	t.Parallel()
 	src := `#if defined LaterFunction
 new functionVisible = 1;
 #else
@@ -493,6 +513,7 @@ new laterVariable;
 }
 
 func TestTaggedUseBeforeDeclarationTriggersAdditionalDiscoveryPass(t *testing.T) {
+	t.Parallel()
 	src := `#if defined SecondPassMarker
 #define PASS 2
 #elseif defined FirstPassMarker
@@ -528,6 +549,7 @@ Float:TaggedResult() { return 1.0; }
 }
 
 func TestConditionalCompilationElseif(t *testing.T) {
+	t.Parallel()
 	src := "#define HUD_VERSION 2\n" +
 		"#if HUD_VERSION >= 2\nnew v = 2;\n#elseif HUD_VERSION == 1\nnew v = 1;\n#else\nnew v = 0;\n#endif\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
@@ -538,6 +560,7 @@ func TestConditionalCompilationElseif(t *testing.T) {
 }
 
 func TestConditionalNested(t *testing.T) {
+	t.Parallel()
 	src := "#if 1\n#if 0\nnew a = 1;\n#else\nnew a = 2;\n#endif\n#endif\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -547,6 +570,7 @@ func TestConditionalNested(t *testing.T) {
 }
 
 func TestInactiveBranchDefinesDoNotLeak(t *testing.T) {
+	t.Parallel()
 	src := "#if 0\n#define SHOULD_NOT_EXIST 1\n#endif\nnew x = SHOULD_NOT_EXIST;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -556,6 +580,7 @@ func TestInactiveBranchDefinesDoNotLeak(t *testing.T) {
 }
 
 func TestIncludeGuardPattern(t *testing.T) {
+	t.Parallel()
 	resolver := preprocess.MapResolver{
 		"helper.inc": []byte("#if defined _INC_HELPER\n#endinput\n#endif\n#define _INC_HELPER\nstock Helper() { return 1; }\n"),
 	}
@@ -571,6 +596,7 @@ func TestIncludeGuardPattern(t *testing.T) {
 }
 
 func TestIncludeGuardBreaksRecursiveInclude(t *testing.T) {
+	t.Parallel()
 	resolver := preprocess.MapResolver{
 		"a.inc": []byte("#if defined _INC_A\n#endinput\n#endif\n#define _INC_A\n#include \"b.inc\"\n"),
 		"b.inc": []byte("#include \"a.inc\"\n"),
@@ -584,6 +610,7 @@ func TestIncludeGuardBreaksRecursiveInclude(t *testing.T) {
 }
 
 func TestUnguardedRecursiveIncludeReportsCycle(t *testing.T) {
+	t.Parallel()
 	resolver := preprocess.MapResolver{
 		"a.inc": []byte("#include \"b.inc\"\n"),
 		"b.inc": []byte("#include \"a.inc\"\n"),
@@ -598,6 +625,7 @@ func TestUnguardedRecursiveIncludeReportsCycle(t *testing.T) {
 }
 
 func TestTokenCacheProducesIdenticalResultsAcrossRuns(t *testing.T) {
+	t.Parallel()
 	resolver := preprocess.MapResolver{
 		"helper.inc": []byte("#define HELPER_VALUE 7\nstock Helper() { return HELPER_VALUE; }\n"),
 	}
@@ -618,6 +646,7 @@ func TestTokenCacheProducesIdenticalResultsAcrossRuns(t *testing.T) {
 }
 
 func TestTryIncludeMissingIsSilent(t *testing.T) {
+	t.Parallel()
 	src := "#tryinclude <does_not_exist>\nnew x = 1;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{Resolver: preprocess.MapResolver{}})
 	for _, d := range r.Diagnostics {
@@ -628,6 +657,7 @@ func TestTryIncludeMissingIsSilent(t *testing.T) {
 }
 
 func TestIncludeMissingIsError(t *testing.T) {
+	t.Parallel()
 	src := "#include <does_not_exist>\nnew x = 1;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{Resolver: preprocess.MapResolver{}})
 	found := false
@@ -642,6 +672,7 @@ func TestIncludeMissingIsError(t *testing.T) {
 }
 
 func TestNoResolverLeavesIncludeUnresolved(t *testing.T) {
+	t.Parallel()
 	src := "#include <a_samp>\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	if len(r.Includes) != 1 || r.Includes[0].Resolved {
@@ -655,10 +686,12 @@ func TestNoResolverLeavesIncludeUnresolved(t *testing.T) {
 }
 
 func TestErrorAndWarningDirectives(t *testing.T) {
+	t.Parallel()
 	src := "#warning something is off\n#if 0\n#error should not fire\n#endif\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	var warn, errs int
 	for _, d := range r.Diagnostics {
+		//nolint:exhaustive // This test checks only warning and error directives.
 		switch d.Code {
 		case preprocess.CodeUserWarning:
 			warn++
@@ -672,6 +705,7 @@ func TestErrorAndWarningDirectives(t *testing.T) {
 }
 
 func TestAssertDirective(t *testing.T) {
+	t.Parallel()
 	src := "#assert 1 == 2\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	found := false
@@ -686,6 +720,7 @@ func TestAssertDirective(t *testing.T) {
 }
 
 func TestEndinputStopsProcessing(t *testing.T) {
+	t.Parallel()
 	src := "new a = 1;\n#endinput\nnew b = 2;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{})
 	got := expandedText(t, r)
@@ -695,6 +730,7 @@ func TestEndinputStopsProcessing(t *testing.T) {
 }
 
 func TestPredefinedMacros(t *testing.T) {
+	t.Parallel()
 	src := "new a = OPEN_MP;\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{Predefined: map[string]string{"OPEN_MP": "1"}})
 	got := expandedText(t, r)
@@ -704,6 +740,7 @@ func TestPredefinedMacros(t *testing.T) {
 }
 
 func TestDeterministicOutput(t *testing.T) {
+	t.Parallel()
 	src := "#define SQR(%0) ((%0)*(%0))\nnew x = SQR(1+2);\n#if defined SQR\nnew y = 1;\n#endif\n"
 	r1 := preprocess.Run([]byte(src), preprocess.Options{})
 	r2 := preprocess.Run([]byte(src), preprocess.Options{})

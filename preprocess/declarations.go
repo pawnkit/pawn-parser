@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -86,8 +87,8 @@ func (t *declarationTracker) defined(name string) bool {
 		return false
 	}
 	name = t.name(name)
-	for index := len(t.scopes) - 1; index >= 0; index-- {
-		if _, ok := t.scopes[index][name]; ok {
+	for _, v := range slices.Backward(t.scopes) {
+		if _, ok := v[name]; ok {
 			return true
 		}
 	}
@@ -116,6 +117,7 @@ func (t *declarationTracker) constant(name string) ([]ptok, bool) {
 	return tokens, true
 }
 
+//nolint:gocyclo // Declaration tracking handles several independent token states.
 func (t *declarationTracker) observe(item ptok) {
 	if t == nil || item.Kind == token.EOF {
 		return
@@ -130,6 +132,7 @@ func (t *declarationTracker) observe(item ptok) {
 		t.observeCall()
 	}
 
+	//nolint:exhaustive // Only braces change declaration state here.
 	switch item.Kind {
 	case token.LBrace:
 		t.finishHeader(true, false)
@@ -154,6 +157,7 @@ func (t *declarationTracker) observe(item ptok) {
 	}
 
 	t.header = append(t.header, entry)
+	//nolint:exhaustive // Only delimiter kinds change nesting state here.
 	switch item.Kind {
 	case token.LParen:
 		t.parenDepth++
@@ -185,6 +189,7 @@ func (t *declarationTracker) finishHeader(body, mayHaveBody bool) {
 	}
 	t.pendingFunc = false
 	t.pendingParams = nil
+	//nolint:nestif // Scope recovery handles malformed in-progress declarations.
 	if len(t.scopes) == 0 {
 		if name, params, tagged, ok := functionDeclaration(t.header); ok {
 			name = t.name(name)
@@ -240,6 +245,7 @@ func (t *declarationTracker) observeEnumToken(item declarationToken) {
 	if state == nil {
 		return
 	}
+	//nolint:exhaustive // Enum tracking only handles delimiters and separators.
 	switch item.kind {
 	case token.LParen:
 		state.parenDepth++
@@ -296,8 +302,8 @@ func (t *declarationTracker) finishEnumEntry() {
 	span := int64(1)
 	if open := declarationTokenIndex(state.entry[nameIndex+1:], token.LBracket); open >= 0 {
 		open += nameIndex + 1
-		if close := matchingDeclarationBracket(state.entry, open); close > open {
-			if value, ok := t.declarationInteger(state.entry[open+1 : close]); ok && value > 0 {
+		if closing := matchingDeclarationBracket(state.entry, open); closing > open {
+			if value, ok := t.declarationInteger(state.entry[open+1 : closing]); ok && value > 0 {
 				span = value
 			}
 		}
@@ -364,6 +370,7 @@ func functionDeclaration(items []declarationToken) (string, []string, bool, bool
 	depth := 0
 	open := -1
 	for index, item := range items {
+		//nolint:exhaustive // Function headers only inspect declaration delimiters.
 		switch item.kind {
 		case token.Assign:
 			if depth == 0 {
@@ -396,11 +403,11 @@ func functionDeclaration(items []declarationToken) (string, []string, bool, bool
 		return "", nil, false, false
 	}
 	tagged := nameIndex >= 2 && items[nameIndex-1].kind == token.Colon && items[nameIndex-2].text != "_"
-	close := matchingParen(items, open)
-	if close < 0 {
+	closing := matchingParen(items, open)
+	if closing < 0 {
 		return name, nil, tagged, true
 	}
-	return name, parameterNames(items[open+1 : close]), tagged, true
+	return name, parameterNames(items[open+1 : closing]), tagged, true
 }
 
 func declarationStartsValue(items []declarationToken) bool {
@@ -430,6 +437,7 @@ func declarationModifier(kind token.Kind) bool {
 func matchingParen(items []declarationToken, open int) int {
 	depth := 0
 	for index := open; index < len(items); index++ {
+		//nolint:exhaustive // Matching only tracks parentheses.
 		switch items[index].kind {
 		case token.LParen:
 			depth++
@@ -450,6 +458,7 @@ func parameterNames(items []declarationToken) []string {
 	for index := 0; index <= len(items); index++ {
 		atEnd := index == len(items)
 		if !atEnd {
+			//nolint:exhaustive // Parameter parsing only tracks nested delimiters.
 			switch items[index].kind {
 			case token.LParen, token.LBracket, token.LBrace:
 				depth++
@@ -483,6 +492,7 @@ func variableDeclarations(items []declarationToken) []string {
 	return parameterNames(items[keyword+1:])
 }
 
+//nolint:gocyclo // Declaration segmentation keeps nested delimiters in one pass.
 func constantDeclarations(items []declarationToken) map[string][]declarationToken {
 	keyword := -1
 	for index, item := range items {
@@ -501,6 +511,7 @@ func constantDeclarations(items []declarationToken) map[string][]declarationToke
 	for index := start; index <= len(items); index++ {
 		atEnd := index == len(items)
 		if !atEnd {
+			//nolint:exhaustive // Declaration parsing only tracks nested delimiters.
 			switch items[index].kind {
 			case token.LParen, token.LBracket, token.LBrace:
 				depth++
@@ -510,13 +521,14 @@ func constantDeclarations(items []declarationToken) map[string][]declarationToke
 				}
 			}
 		}
-		if !atEnd && !(items[index].kind == token.Comma && depth == 0) && items[index].kind != token.Semicolon {
+		if !atEnd && (items[index].kind != token.Comma || depth != 0) && items[index].kind != token.Semicolon {
 			continue
 		}
 		segment := items[start:index]
 		assign := -1
 		segmentDepth := 0
 		for position, item := range segment {
+			//nolint:exhaustive // Declaration parsing only tracks nesting and assignment.
 			switch item.kind {
 			case token.LParen, token.LBracket, token.LBrace:
 				segmentDepth++
@@ -550,6 +562,7 @@ func declaratorName(items []declarationToken) string {
 	end := len(items)
 	depth := 0
 	for index, item := range items {
+		//nolint:exhaustive // Declarator parsing only tracks nested delimiters.
 		switch item.kind {
 		case token.LParen, token.LBracket, token.LBrace:
 			depth++
@@ -573,6 +586,7 @@ foundEnd:
 	return ""
 }
 
+//nolint:gocyclo // Array declarators need one pass over mixed dimensions.
 func (t *declarationTracker) recordArrayDeclarations(items []declarationToken) {
 	if t == nil || !declarationTokenContains(items, token.LBracket) {
 		return
@@ -603,11 +617,11 @@ func (t *declarationTracker) recordArrayDeclarations(items []declarationToken) {
 			if declarator[index].kind != token.LBracket {
 				continue
 			}
-			close := matchingDeclarationBracket(declarator, index)
-			if close < 0 {
+			closing := matchingDeclarationBracket(declarator, index)
+			if closing < 0 {
 				break
 			}
-			expression := declarator[index+1 : close]
+			expression := declarator[index+1 : closing]
 			value, ok := t.declarationInteger(expression)
 			if !ok {
 				value = 0
@@ -618,7 +632,7 @@ func (t *declarationTracker) recordArrayDeclarations(items []declarationToken) {
 				}
 			}
 			dimensions = append(dimensions, value)
-			index = close
+			index = closing
 		}
 		if len(dimensions) == 0 {
 			continue
@@ -687,15 +701,18 @@ func (t *declarationTracker) declarationInteger(items []declarationToken) (int64
 		return 0, false
 	}
 	sign := int64(1)
-	if items[0].kind == token.Minus {
+	//nolint:exhaustive // Integer declarations only accept supported literal forms.
+	switch items[0].kind {
+	case token.Minus:
 		sign = -1
 		items = items[1:]
-	} else if items[0].kind == token.Plus {
+	case token.Plus:
 		items = items[1:]
 	}
 	if len(items) != 1 {
 		return 0, false
 	}
+	//nolint:exhaustive // Integer declarations only accept supported literal forms.
 	switch items[0].kind {
 	case token.IntLiteral:
 		value, err := strconv.ParseInt(strings.ReplaceAll(items[0].text, "_", ""), 0, 64)
@@ -740,6 +757,7 @@ func splitDeclarationSegments(items []declarationToken) [][]declarationToken {
 	start := 0
 	depth := 0
 	for index, item := range items {
+		//nolint:exhaustive // Segment splitting only tracks delimiters and separators.
 		switch item.kind {
 		case token.LParen, token.LBracket, token.LBrace:
 			depth++
@@ -784,6 +802,7 @@ func topLevelDeclarationToken(items []declarationToken, kind token.Kind) int {
 		if item.kind == kind && depth == 0 {
 			return index
 		}
+		//nolint:exhaustive // Top-level lookup only tracks nested delimiters.
 		switch item.kind {
 		case token.LParen, token.LBracket, token.LBrace:
 			depth++
@@ -799,6 +818,7 @@ func topLevelDeclarationToken(items []declarationToken, kind token.Kind) int {
 func matchingDeclarationBracket(items []declarationToken, open int) int {
 	depth := 0
 	for index := open; index < len(items); index++ {
+		//nolint:exhaustive // Bracket matching only tracks bracket tokens.
 		switch items[index].kind {
 		case token.LBracket:
 			depth++

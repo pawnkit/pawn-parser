@@ -93,6 +93,7 @@ func (e *engine) handleDirectiveLine(f *frame) {
 	}
 }
 
+//nolint:gocyclo // Pawn macro forms share one directive parser.
 func (e *engine) handleDefine(f *frame, hash token.Token) {
 	if !macroNameToken(f.cur(), f.source) {
 		if !endsLine(f.toks[f.pos-1]) {
@@ -321,7 +322,7 @@ func (e *engine) closeBranch(f *frame, hash token.Token) {
 	e.branches[idx].BodySpan.End = hash.Start.Offset
 }
 
-func (e *engine) handleUserMessage(f *frame, hash token.Token, msgStart int, isError bool, lineEnded bool) {
+func (e *engine) handleUserMessage(f *frame, hash token.Token, msgStart int, isError, lineEnded bool) {
 	end := msgStart
 	if !lineEnded {
 		e.collectRestOfLine(f)

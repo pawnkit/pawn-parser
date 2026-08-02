@@ -1,6 +1,7 @@
 package preprocess_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 // matter how malformed the input is: Run never panics, always terminates,
 // and never exceeds its configured bounds.
 func FuzzRun(f *testing.F) {
+	objectMacro := "#define A " + strings.Repeat("A", 1) + "\nA\n"
+	functionMacro := "#define A(%0) " + strings.Repeat("A(%0) ", 2) + "\nA(x)\n"
 	seeds := []string{
 		"",
 		"#define FOO 1\nnew x = FOO;\n",
@@ -19,8 +22,8 @@ func FuzzRun(f *testing.F) {
 		"#if defined FOO\n#else\n#endif\n",
 		"#if 1\n#elseif 0\n#else\n#endif\n",
 		"#include <a>\n#tryinclude \"b\"\n",
-		"#define A A\nA\n",
-		"#define A(%0) A(%0) A(%0)\nA(x)\n",
+		objectMacro,
+		functionMacro,
 		"#undef FOO\n#error msg\n#warning msg\n#assert 1\n",
 		"#endinput\nnever\n",
 		"\\\n#define FOO\\\n 1\n",

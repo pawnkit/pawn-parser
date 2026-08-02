@@ -7,6 +7,7 @@ import (
 	"github.com/pawnkit/pawnkit-core/diagnostic"
 )
 
+//nolint:gocyclo // Include handling validates and records one directive in order.
 func (e *engine) handleInclude(f *frame, hash token.Token, optional bool) {
 	kwTok := f.toks[f.pos-1]
 	searchStart := kwTok.End.Offset

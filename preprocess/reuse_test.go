@@ -8,6 +8,7 @@ import (
 )
 
 func TestReuseTriviaContext(t *testing.T) {
+	t.Parallel()
 	before := preprocess.Run([]byte("stock Work() { return 1; } // old\n"), preprocess.Options{})
 	after, reused, err := preprocess.ReuseTriviaContext(
 		context.Background(),
@@ -28,6 +29,7 @@ func TestReuseTriviaContext(t *testing.T) {
 }
 
 func TestReuseTriviaContextRejectsMovedTokens(t *testing.T) {
+	t.Parallel()
 	before := preprocess.Run([]byte("stock  Work() { return 1; }\n"), preprocess.Options{})
 	_, reused, err := preprocess.ReuseTriviaContext(
 		context.Background(),
@@ -45,6 +47,7 @@ func TestReuseTriviaContextRejectsMovedTokens(t *testing.T) {
 }
 
 func TestReuseCompatibleContext(t *testing.T) {
+	t.Parallel()
 	before := preprocess.Run([]byte("stock Work() { return 1; }\n"), preprocess.Options{})
 	after, edit, reused, err := preprocess.ReuseCompatibleContext(
 		context.Background(),
@@ -64,7 +67,9 @@ func TestReuseCompatibleContext(t *testing.T) {
 	}
 }
 
+//nolint:dupl // This test checks a different shifted record type.
 func TestReuseCompatibleContextShiftsFollowingDirectives(t *testing.T) {
+	t.Parallel()
 	initial := []byte("stock Work() { return 1; }\n#include <shared>\n")
 	final := []byte("stock Work() { return 1 + 2; }\n#include <shared>\n")
 	before := preprocess.Run(initial, preprocess.Options{})
@@ -86,7 +91,9 @@ func TestReuseCompatibleContextShiftsFollowingDirectives(t *testing.T) {
 	}
 }
 
+//nolint:dupl // This test checks a different shifted record type.
 func TestReuseCompatibleContextShiftsFollowingMacroInvocations(t *testing.T) {
+	t.Parallel()
 	initial := []byte("#define VALUE 1\nstock Work() { return 1; }\nnew result = VALUE;\n")
 	final := []byte("#define VALUE 1\nstock Work() { return 1 + 2; }\nnew result = VALUE;\n")
 	before := preprocess.Run(initial, preprocess.Options{})
@@ -109,6 +116,7 @@ func TestReuseCompatibleContextShiftsFollowingMacroInvocations(t *testing.T) {
 }
 
 func TestReuseCompatibleContextRejectsDirectiveEdit(t *testing.T) {
+	t.Parallel()
 	before := preprocess.Run([]byte("#define VALUE 1\nstock Work() { return VALUE; }\n"), preprocess.Options{})
 	_, _, reused, err := preprocess.ReuseCompatibleContext(
 		context.Background(),

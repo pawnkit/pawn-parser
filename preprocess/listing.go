@@ -114,6 +114,7 @@ func adjustedListingLine(frame *frame, line int) int {
 	return max(1, line-frame.listingLineAdjustment)
 }
 
+//nolint:gocyclo // Listing output preserves compiler line and macro boundaries.
 func renderListing(files []FileInfo, events []listingEvent, options ListingOptions) []byte {
 	var output bytes.Buffer
 	lineEndings := listingLineEndings(files)

@@ -9,6 +9,7 @@ import (
 	"github.com/pawnkit/pawn-parser/token"
 )
 
+// TokenCache reuses tokens for unchanged include contents.
 type TokenCache struct {
 	mu      sync.RWMutex
 	entries map[string]tokenCacheEntry
@@ -19,6 +20,7 @@ type tokenCacheEntry struct {
 	tokens []token.Token
 }
 
+// NewTokenCache returns an empty token cache.
 func NewTokenCache() *TokenCache {
 	return &TokenCache{entries: make(map[string]tokenCacheEntry)}
 }

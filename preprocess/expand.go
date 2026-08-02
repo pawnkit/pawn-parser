@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/pawnkit/pawn-parser/token"
@@ -12,6 +13,7 @@ func (e *engine) emitActive(f *frame) {
 	if !f.currentActive() {
 		return
 	}
+	//nolint:nestif // Macro expansion checks several ordered match conditions.
 	if macroNameToken(tok, f.source) {
 		name := macroPrefixText(tok.Text(f.source))
 		if m, ok := e.macros.lookup(name); ok {
@@ -71,22 +73,10 @@ func (e *engine) reserveOutputToken() {
 		return
 	}
 	limit := e.opts.MaxOutputTokens + 1
-	capacity := max(64, cap(e.out)*2)
-	if capacity > limit {
-		capacity = limit
-	}
+	capacity := min(max(64, cap(e.out)*2), limit)
 	next := make([]token.Token, len(e.out), capacity)
 	copy(next, e.out)
 	e.out = next
-}
-
-func (e *engine) appendAllOut(toks []ptok) {
-	for _, t := range toks {
-		e.appendOut(t)
-		if e.truncated {
-			return
-		}
-	}
 }
 
 func wrapOrigin(t ptok, inv token.Span, macroName string) ptok {
@@ -140,8 +130,8 @@ func (e *engine) expandFunctionAt(f *frame, tok token.Token, m Macro) {
 	inv := invocationSpan(f.fileIndex, tok, closeParen)
 	e.recordInvocation(inv)
 	body := substituteParams(m, args, inv)
-	close := toPtok(f.source, closeParen, f.fileIndex)
-	e.expandWithFrameRemainder(f, body, closeParen, close.trailing, hideSet{}.with(m.Name), 1)
+	closing := toPtok(f.source, closeParen, f.fileIndex)
+	e.expandWithFrameRemainder(f, body, closeParen, closing.trailing, hideSet{}.with(m.Name), 1)
 }
 
 // expandWithFrameRemainder rescans a top-level replacement together with the
@@ -212,6 +202,7 @@ func (e *engine) collectArgs(f *frame) (args [][]ptok, closeParen token.Token, o
 			return nil, token.Token{}, false
 		}
 		t := f.cur()
+		//nolint:exhaustive // Argument collection only handles grouping tokens.
 		switch t.Kind {
 		case token.LParen, token.LBracket, token.LBrace:
 			depth++
@@ -270,6 +261,7 @@ func substituteParams(m Macro, args [][]ptok, inv token.Span) []ptok {
 	return out
 }
 
+//nolint:gocyclo // Expansion order and recursion guards are coupled.
 func (e *engine) expandRun(f *frame, toks []ptok, hide hideSet, depth int) {
 	for index := range toks {
 		toks[index].hide = mergeHideSets(toks[index].hide, hide)
@@ -305,6 +297,7 @@ func (e *engine) expandRun(f *frame, toks []ptok, hide hideSet, depth int) {
 		}
 		t := toks[i]
 		name := macroPrefixText(t.text)
+		//nolint:nestif // Rescanning combines macro, pattern, and boundary checks.
 		if name != "" && !t.hide[name] {
 			if m, ok := e.macros.lookup(name); ok {
 				var replacement []ptok
@@ -332,6 +325,7 @@ func (e *engine) expandRun(f *frame, toks []ptok, hide hideSet, depth int) {
 					}
 				}
 				if matched {
+					//nolint:gocritic // Replacement boundaries have distinct trivia rules.
 					if len(replacement) != 0 {
 						replacement[0].leading = t.leading + replacement[0].leading
 					} else if next < len(toks) {
@@ -395,12 +389,8 @@ func extendExpansionHistory(current, parent map[string]string, name, signature s
 		return nil
 	}
 	history := make(map[string]string, len(current)+len(parent)+1)
-	for macro, value := range parent {
-		history[macro] = value
-	}
-	for macro, value := range current {
-		history[macro] = value
-	}
+	maps.Copy(history, parent)
+	maps.Copy(history, current)
 	if signature != "" {
 		history[name] = signature
 	}
@@ -458,6 +448,7 @@ func expansionSpan(items []ptok) token.Span {
 
 func (e *engine) extendInvocation(inv token.Span) {
 	start, end := inv.Start.Offset, inv.End.Offset
+	//nolint:modernize // This loop needs pointers to backing slice entries.
 	for index := len(e.invocations) - 1; index >= 0; index-- {
 		item := &e.invocations[index]
 		if item.File != inv.File || item.Range.End < start || item.Range.Start > end {
@@ -471,6 +462,7 @@ func (e *engine) extendInvocation(inv token.Span) {
 		return
 	}
 	replacements := e.listing[e.listingCode].replacements
+	//nolint:modernize // This loop needs pointers to backing slice entries.
 	for index := len(replacements) - 1; index >= 0; index-- {
 		item := &replacements[index]
 		if item.End < start || item.Start > end {
@@ -539,6 +531,7 @@ func collectArgsSlice(toks []ptok, start int) (args [][]ptok, next int, ok bool)
 	var current []ptok
 	for i < len(toks) {
 		t := toks[i]
+		//nolint:exhaustive // Argument collection only handles grouping tokens.
 		switch t.Kind {
 		case token.LParen, token.LBracket, token.LBrace:
 			depth++

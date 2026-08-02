@@ -1,6 +1,7 @@
 package preprocess_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/pawnkit/pawn-parser/preprocess"
@@ -12,6 +13,7 @@ import (
 // error-tolerant and preprocess must be too, since editors call this on
 // in-progress source constantly.
 func TestMalformedInputsDoNotPanic(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"",
 		"#",
@@ -44,15 +46,15 @@ func TestMalformedInputsDoNotPanic(t *testing.T) {
 		"FOO(",
 		"FOO(1,2",
 		"#define FOO(%0) %0\nFOO(",
-		"#define A A A A A A A A A A A A A A A A\nA\n",
+		"#define A " + strings.Repeat("A ", 15) + "A\nA\n",
 		"\\\n#define FOO 1\n",
 		"#define FOO(%0) %0(%1)\nFOO(x",
 		strRepeat("#if 1\n", 2000) + strRepeat("#endif\n", 2000),
 		strRepeat("#define M M\n", 1) + "M\n",
 	}
 	for _, src := range cases {
-		src := src
 		t.Run("", func(t *testing.T) {
+			t.Parallel()
 			defer func() {
 				if r := recover(); r != nil {
 					t.Fatalf("panic on input %q: %v", src, r)
@@ -75,10 +77,13 @@ func strRepeat(s string, n int) string {
 }
 
 func TestMacroExpansionBudgetsBound(t *testing.T) {
+	t.Parallel()
 	src := "#define A0 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+	var srcSb79 strings.Builder
 	for i := 1; i <= 30; i++ {
-		src += "#define A" + itoa(i) + " A" + itoa(i-1) + " A" + itoa(i-1) + "\n"
+		srcSb79.WriteString("#define A" + itoa(i) + " A" + itoa(i-1) + " A" + itoa(i-1) + "\n")
 	}
+	src += srcSb79.String()
 	src += "A30\n"
 	r := preprocess.Run([]byte(src), preprocess.Options{MaxOutputTokens: 10000, MaxExpansionDepth: 40})
 	if !r.Truncated {
@@ -102,6 +107,7 @@ func itoa(n int) string {
 }
 
 func TestUnmatchedDirectivesReportDiagnosticsNotPanic(t *testing.T) {
+	t.Parallel()
 	cases := map[string]preprocess.Code{
 		"#endif\n":    preprocess.CodeUnmatchedEndif,
 		"#else\n":     preprocess.CodeUnmatchedElse,
@@ -122,6 +128,7 @@ func TestUnmatchedDirectivesReportDiagnosticsNotPanic(t *testing.T) {
 }
 
 func TestElifIsNotAcceptedAsPawnElseif(t *testing.T) {
+	t.Parallel()
 	r := preprocess.Run([]byte("#elif 1\n"), preprocess.Options{})
 	found := false
 	for _, d := range r.Diagnostics {
@@ -135,6 +142,7 @@ func TestElifIsNotAcceptedAsPawnElseif(t *testing.T) {
 }
 
 func TestUnterminatedConditionalReported(t *testing.T) {
+	t.Parallel()
 	r := preprocess.Run([]byte("#if 1\nnew x = 1;\n"), preprocess.Options{})
 	found := false
 	for _, d := range r.Diagnostics {

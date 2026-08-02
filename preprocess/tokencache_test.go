@@ -3,6 +3,7 @@ package preprocess
 import "testing"
 
 func TestTokenCacheReusesTokensForUnchangedContent(t *testing.T) {
+	t.Parallel()
 	cache := NewTokenCache()
 	content := []byte("stock Foo() { return 1; }\n")
 	first := cache.tokenize("helper.inc", content)
@@ -13,6 +14,7 @@ func TestTokenCacheReusesTokensForUnchangedContent(t *testing.T) {
 }
 
 func TestTokenCacheInvalidatesOnContentChange(t *testing.T) {
+	t.Parallel()
 	cache := NewTokenCache()
 	first := cache.tokenize("helper.inc", []byte("stock Foo() { return 1; }\n"))
 	second := cache.tokenize("helper.inc", []byte("stock Foo() { return 2; }\n"))
@@ -25,6 +27,7 @@ func TestTokenCacheInvalidatesOnContentChange(t *testing.T) {
 }
 
 func TestNilTokenCacheTokenizesDirectly(t *testing.T) {
+	t.Parallel()
 	var cache *TokenCache
 	tokens := cache.tokenize("helper.inc", []byte("stock Foo() {}\n"))
 	if len(tokens) == 0 {
@@ -33,6 +36,7 @@ func TestNilTokenCacheTokenizesDirectly(t *testing.T) {
 }
 
 func TestResultRetainsTokensForEachFile(t *testing.T) {
+	t.Parallel()
 	cache := NewTokenCache()
 	include := []byte("stock Helper() {}\n")
 	result := Run([]byte("#include \"helper.inc\"\n"), Options{

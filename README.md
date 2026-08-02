@@ -41,6 +41,7 @@ func main() {
 
 - `github.com/pawnkit/pawn-parser`: Pawn CST parser and node kinds
 - `github.com/pawnkit/pawn-parser/lexer`: standalone tokenizer
+- `github.com/pawnkit/pawn-parser/preprocess`: directives, macros, and includes
 - `github.com/pawnkit/pawn-parser/token`: token kinds, positions, and trivia
 
 ## Parse profiles

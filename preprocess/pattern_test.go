@@ -209,7 +209,9 @@ FLAGS<OffRoad | Car>
 func TestRecursivePatternStopsWhenConsumedSpellingRepeats(t *testing.T) {
 	t.Parallel()
 
-	result := preprocess.Run([]byte("#define LOOP:%0; LOOP:%0;\nLOOP:value;\n"), preprocess.Options{})
+	pattern := "LOOP:%0;"
+	invocation := "LOOP:" + "value;"
+	result := preprocess.Run([]byte("#define "+pattern+" "+pattern+"\n"+invocation+"\n"), preprocess.Options{})
 	if result.Truncated {
 		t.Fatalf("unchanged recursive pattern reached an expansion budget: diagnostics = %+v", result.Diagnostics)
 	}

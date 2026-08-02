@@ -17,6 +17,8 @@ type pawnPatternMatch struct {
 // prefix is exact, %0-%9 capture until the following pattern byte, strings and
 // balanced groups are opaque while searching, and whitespace before most
 // punctuation is insignificant.
+//
+//nolint:gocyclo // Pattern matching handles Pawn's delimiter rules in one scan.
 func matchPawnPattern(source, pattern string, semicolons bool, control byte) (pawnPatternMatch, bool) {
 	prefix := 0
 	for prefix < len(pattern) && pawnAlphanum(pattern[prefix]) {

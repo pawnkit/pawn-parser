@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"maps"
 	"strconv"
 	"strings"
 
@@ -11,7 +12,9 @@ import (
 type MacroKind uint8
 
 const (
+	// MacroObjectLike has no invocation arguments.
 	MacroObjectLike MacroKind = iota + 1
+	// MacroFunctionLike accepts invocation arguments.
 	MacroFunctionLike
 )
 
@@ -66,7 +69,7 @@ func (m Macro) ReplacementCallable() (string, bool) {
 			return name, true
 		}
 	}
-	for index := 0; index < len(m.Body); index++ {
+	for index := range len(m.Body) {
 		if m.Body[index].Kind != token.Identifier {
 			continue
 		}
@@ -127,9 +130,7 @@ func (t *macroTable) defined(name string) bool {
 // safe to retain after processing continues to mutate the table.
 func (t *macroTable) snapshot() map[string]Macro {
 	out := make(map[string]Macro, len(t.byName))
-	for k, v := range t.byName {
-		out[k] = v
-	}
+	maps.Copy(out, t.byName)
 	return out
 }
 
@@ -223,6 +224,7 @@ func pawnAlphanum(char byte) bool {
 	return pawnAlpha(char) || char >= '0' && char <= '9'
 }
 
+//nolint:gocyclo // Pawn pattern escapes are decoded in one scan.
 func decodePawnPattern(raw []byte, control byte) string {
 	var output strings.Builder
 	output.Grow(len(raw))
