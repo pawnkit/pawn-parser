@@ -82,3 +82,27 @@ func TestDeclarationIndexAtBounds(t *testing.T) {
 		t.Fatal("past-end index succeeded")
 	}
 }
+
+func TestRebaseDeclarationIndexMatchesFullBuild(t *testing.T) {
+	t.Parallel()
+	before := []byte("stock First() { return 1; }\nstock Second() { return 2; }\n")
+	after := []byte("stock First() { return 3; }\nstock Second() { return 2; }\n")
+	previousFile := ParseWithProfile(before, ProfileAnalysis)
+	currentFile := ParseWithProfile(after, ProfileAnalysis)
+	previous := BuildDeclarationIndex(previousFile)
+	got, ok := RebaseDeclarationIndex(previous, currentFile, ByteRange{Start: 23, End: 24}, ByteRange{Start: 23, End: 24})
+	if !ok {
+		t.Fatal("declaration index was not rebased")
+	}
+	want := BuildDeclarationIndex(currentFile)
+	if got.Len() != want.Len() || !got.Reliable() {
+		t.Fatalf("rebased index = %#v, want %#v", got, want)
+	}
+	for index := range got.Len() {
+		actual, _ := got.At(index)
+		expected, _ := want.At(index)
+		if actual != expected {
+			t.Fatalf("declaration %d = %#v, want %#v", index, actual, expected)
+		}
+	}
+}

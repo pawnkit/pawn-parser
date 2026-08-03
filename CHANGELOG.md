@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.11 - 2026-08-03
+
+### Performance
+
+- Rebase declaration indexes after local body edits without rehashing unchanged declarations.
+
 ## 1.5.10 - 2026-08-03
 
 ### Added

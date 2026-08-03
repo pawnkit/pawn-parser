@@ -52,6 +52,97 @@ func BuildDeclarationIndex(file *CompactFile) DeclarationIndex {
 	return index
 }
 
+// RebaseDeclarationIndex updates one changed declaration without rehashing the
+// rest of the file. It returns false when the edit changes declaration shape.
+func RebaseDeclarationIndex(
+	previous DeclarationIndex,
+	current *CompactFile,
+	before, after ByteRange,
+) (DeclarationIndex, bool) {
+	if !rebaseInputIsValid(previous, current, before, after) {
+		return DeclarationIndex{}, false
+	}
+	target, ok := rebaseTarget(previous, before)
+	if !ok {
+		return DeclarationIndex{}, false
+	}
+	root := current.Syntax()
+	if !root.Valid() {
+		return DeclarationIndex{}, false
+	}
+	result := DeclarationIndex{items: make([]DeclarationBoundary, 0, previous.Len()), reliable: true}
+	ordinals := make(map[declarationKey]uint32)
+	declarations := root.Declarations()
+	for index := 0; declarations.Next(); index++ {
+		item, ok := rebaseBoundary(previous, index, target, declarations.Declaration(), ordinals)
+		if !ok {
+			return DeclarationIndex{}, false
+		}
+		result.items = append(result.items, item)
+	}
+	if len(result.items) != previous.Len() {
+		return DeclarationIndex{}, false
+	}
+	return result, true
+}
+
+func rebaseInputIsValid(previous DeclarationIndex, current *CompactFile, before, after ByteRange) bool {
+	return current != nil && previous.Reliable() && !current.HasParseErrors() &&
+		validByteRange(before) && validByteRange(after)
+}
+
+func validByteRange(r ByteRange) bool {
+	return r.Start >= 0 && r.End >= r.Start
+}
+
+func rebaseTarget(previous DeclarationIndex, before ByteRange) (int, bool) {
+	target := -1
+	for index, item := range previous.items {
+		if !rangeContains(item.Range, before) {
+			continue
+		}
+		if target >= 0 {
+			return 0, false
+		}
+		target = index
+	}
+	return target, target >= 0
+}
+
+func rangeContains(outer, inner ByteRange) bool {
+	if inner.Start == inner.End {
+		return inner.Start >= outer.Start && inner.Start <= outer.End
+	}
+	return inner.Start >= outer.Start && inner.End <= outer.End
+}
+
+func rebaseBoundary(
+	previous DeclarationIndex,
+	index, target int,
+	node SyntaxNode,
+	ordinals map[declarationKey]uint32,
+) (DeclarationBoundary, bool) {
+	old, ok := previous.At(index)
+	if !ok || old.Kind != node.Kind() || old.Name != declarationName(node) || node.HasError() {
+		return DeclarationBoundary{}, false
+	}
+	key := declarationKey{kind: old.Kind, name: old.Name}
+	item := old
+	item.Range = node.Range()
+	if index == target {
+		item = declarationBoundary(node, ordinals)
+		if item.Identity != old.Identity {
+			return DeclarationBoundary{}, false
+		}
+	} else {
+		ordinals[key]++
+	}
+	if item.Range.Start < 0 || item.Range.End < item.Range.Start {
+		return DeclarationBoundary{}, false
+	}
+	return item, true
+}
+
 // Len returns the number of declarations.
 func (i DeclarationIndex) Len() int { return len(i.items) }
 
