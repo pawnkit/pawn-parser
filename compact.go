@@ -136,6 +136,22 @@ func ParseTokensCompact(source []byte, toks []token.Token, options ParseOptions)
 	return parseTokensCompact(source, toks, options, nil, nil)
 }
 
+// ParseTokensCompactWithRetention parses tokens and keeps compact token data.
+// The retained token slice must match toks; mismatched data is rebuilt.
+func ParseTokensCompactWithRetention(
+	source []byte,
+	toks []token.Token,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+	options ParseOptions,
+) *CompactFile {
+	if options.DiscardTokens {
+		retainedTokens = nil
+		retainedTrivia = nil
+	}
+	return parseTokensCompact(source, toks, options, validRetention(toks, retainedTokens), retainedTrivia)
+}
+
 // ParseTokensCompactContext parses tokens with cancellation.
 func ParseTokensCompactContext(
 	ctx context.Context,
@@ -147,6 +163,35 @@ func ParseTokensCompactContext(
 		return nil, err
 	}
 	return parseTokensCompactContext(ctx, source, toks, options, nil, nil, true)
+}
+
+// ParseTokensCompactContextWithRetention parses tokens with cancellation and
+// keeps compact token data when it matches toks.
+func ParseTokensCompactContextWithRetention(
+	ctx context.Context,
+	source []byte,
+	toks []token.Token,
+	retainedTokens []CompactToken,
+	retainedTrivia []CompactTrivia,
+	options ParseOptions,
+) (*CompactFile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if options.DiscardTokens {
+		retainedTokens = nil
+		retainedTrivia = nil
+	}
+	return parseTokensCompactContext(
+		ctx, source, toks, options, validRetention(toks, retainedTokens), retainedTrivia, true,
+	)
+}
+
+func validRetention(toks []token.Token, retained []CompactToken) []CompactToken {
+	if len(toks) == len(retained) {
+		return retained
+	}
+	return nil
 }
 
 // ParseForLinter parses source without retaining tokens or trivia.

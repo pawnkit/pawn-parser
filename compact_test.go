@@ -259,6 +259,19 @@ func TestParseCompactLexerRetentionMatchesTokenConversion(t *testing.T) {
 	}
 }
 
+func TestParseTokensCompactWithRetentionMatchesParseCompact(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("// lead\nmain() { return value; } // tail\n")
+	full, compact, trivia := lexer.TokenizeCompact(source, true)
+	got := ParseTokensCompactWithRetention(source, full, compact, trivia, ParseOptions{})
+	want := ParseCompact(source, ParseOptions{})
+	if !reflect.DeepEqual(got.Tokens, want.Tokens) || !reflect.DeepEqual(got.Trivia, want.Trivia) {
+		t.Fatal("retained token data differs from direct compact parsing")
+	}
+	assertEquivalentNodes(t, want.Expand().Root, got.Expand().Root)
+}
+
 func assertEquivalentNodes(t *testing.T, want, got *Node) {
 	t.Helper()
 	if want == nil || got == nil {

@@ -51,6 +51,26 @@ func TokenizeCompact(src []byte, retainTrivia bool) ([]token.Token, []token.Comp
 	return tokens.finishCompact(fullTrivia, retainTrivia, true)
 }
 
+// TokenizeCompactContext tokenizes src and observes cancellation.
+func TokenizeCompactContext(
+	ctx context.Context,
+	src []byte,
+	retainTrivia bool,
+) ([]token.Token, []token.CompactToken, []token.CompactTrivia, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+	tokens, trivia, err := buildTokensContext(ctx, src)
+	if err != nil {
+		tokens.discard()
+		trivia.discard()
+		return nil, nil, nil, err
+	}
+	fullTrivia := trivia.finish()
+	fullTokens, compact, compactTrivia := tokens.finishCompact(fullTrivia, retainTrivia, true)
+	return fullTokens, compact, compactTrivia, nil
+}
+
 // TokenizeCompactOnly tokenizes src without building full token records.
 func TokenizeCompactOnly(src []byte, retainTrivia bool) ([]token.CompactToken, []token.CompactTrivia) {
 	tokens, trivia := buildTokens(src)

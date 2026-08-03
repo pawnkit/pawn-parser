@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.10 - 2026-08-03
+
+### Added
+
+- Preserve compact token and trivia data when parsing an existing token stream.
+- Add a cancellable compact tokenizer for incremental consumers.
+
 ## 1.5.9 - 2026-08-02
 
 ### Changed

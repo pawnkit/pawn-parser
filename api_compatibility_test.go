@@ -9,19 +9,21 @@ import (
 )
 
 var (
-	_ func([]byte) *parser.File                                                                                        = parser.Parse
-	_ func([]byte, parser.Profile) *parser.CompactFile                                                                 = parser.ParseWithProfile
-	_ func([]byte, []token.Token, parser.ParseOptions) *parser.File                                                    = parser.ParseTokensWithOptions
-	_ func(context.Context, []byte, []token.Token, parser.ParseOptions) (*parser.CompactFile, error)                   = parser.ParseTokensCompactContext
-	_ func([]byte, []token.Token, *parser.CompactFile, parser.ByteRange, parser.ByteRange) (*parser.CompactFile, bool) = parser.RebaseCompactTrivia
-	_ func([]byte, []token.Token, *parser.CompactFile, parser.ByteRange, parser.ByteRange) (*parser.CompactFile, bool) = parser.ReparseCompactDeclaration
-	_ func([]byte) []token.Token                                                                                       = lexer.Tokenize
-	_ func(context.Context, []byte) ([]token.Token, error)                                                             = lexer.TokenizeContext
-	_ func(string) (token.Kind, bool)                                                                                  = token.LookupKeyword
-	_ parser.Kind                                                                                                      = parser.KindInvalid
-	_ parser.DiagnosticCode                                                                                            = parser.DiagnosticUnexpectedToken
-	_ parser.DeclarationIndex                                                                                          = parser.BuildDeclarationIndex(nil)
-	_ token.Kind                                                                                                       = token.Invalid
+	_ func([]byte) *parser.File                                                                                                                     = parser.Parse
+	_ func([]byte, parser.Profile) *parser.CompactFile                                                                                              = parser.ParseWithProfile
+	_ func([]byte, []token.Token, parser.ParseOptions) *parser.File                                                                                 = parser.ParseTokensWithOptions
+	_ func(context.Context, []byte, []token.Token, parser.ParseOptions) (*parser.CompactFile, error)                                                = parser.ParseTokensCompactContext
+	_ func([]byte, []token.Token, []parser.CompactToken, []parser.CompactTrivia, parser.ParseOptions) *parser.CompactFile                           = parser.ParseTokensCompactWithRetention
+	_ func(context.Context, []byte, []token.Token, []parser.CompactToken, []parser.CompactTrivia, parser.ParseOptions) (*parser.CompactFile, error) = parser.ParseTokensCompactContextWithRetention
+	_ func([]byte, []token.Token, *parser.CompactFile, parser.ByteRange, parser.ByteRange) (*parser.CompactFile, bool)                              = parser.RebaseCompactTrivia
+	_ func([]byte, []token.Token, *parser.CompactFile, parser.ByteRange, parser.ByteRange) (*parser.CompactFile, bool)                              = parser.ReparseCompactDeclaration
+	_ func([]byte) []token.Token                                                                                                                    = lexer.Tokenize
+	_ func(context.Context, []byte) ([]token.Token, error)                                                                                          = lexer.TokenizeContext
+	_ func(string) (token.Kind, bool)                                                                                                               = token.LookupKeyword
+	_ parser.Kind                                                                                                                                   = parser.KindInvalid
+	_ parser.DiagnosticCode                                                                                                                         = parser.DiagnosticUnexpectedToken
+	_ parser.DeclarationIndex                                                                                                                       = parser.BuildDeclarationIndex(nil)
+	_ token.Kind                                                                                                                                    = token.Invalid
 )
 
 var _ = func(file *parser.CompactFile, diagnostic parser.Diagnostic, span token.Span) {
