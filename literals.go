@@ -109,7 +109,12 @@ func (p *parser[N, S]) parseStringConcat() N {
 
 func (p *parser[N, S]) parseParenthesized() N {
 	lp := p.advance()
+	// A colon inside parentheses cannot separate an outer case label
+	// or ternary branch.
+	wasSuppressed := p.suppressTagCast
+	p.suppressTagCast = false
 	inner := p.parseExpression()
+	p.suppressTagCast = wasSuppressed
 	node := p.sink.NewNode(KindParenthesizedExpression, inner)
 	p.sink.SetField(node, fieldExpression, inner)
 	p.sink.SetStart(node, lp.Start.Offset)

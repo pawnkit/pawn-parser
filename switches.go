@@ -98,14 +98,38 @@ func (p *parser[N, S]) parseCaseValueList() N {
 }
 
 func (p *parser[N, S]) parseCaseValue() N {
-	start := p.parseTernary()
+	start := p.parseCaseOperand()
 	if p.at(token.DotDot) {
 		p.advance()
-		end := p.parseTernary()
+		end := p.parseCaseOperand()
 		node := p.sink.NewNode(KindCaseRange, start, end)
 		p.sink.SetField(node, fieldStart, start)
 		p.sink.SetField(node, fieldEnd, end)
 		return node
 	}
 	return start
+}
+
+func (p *parser[N, S]) parseCaseOperand() N {
+	first := p.cur()
+	end, ok := p.caseMacroEnds[first.Start.Offset]
+	if ok && first.Kind == token.Identifier && p.peekKind(1) == token.Lt {
+		for i := 2; ; i++ {
+			last := p.peek(i)
+			if last.Kind == token.EOF || last.End.Offset > end {
+				break
+			}
+			if last.End.Offset == end {
+				next := p.peekKind(i + 1)
+				if last.Kind == token.Gt && (next == token.Colon || next == token.Comma || next == token.DotDot) {
+					for range i + 1 {
+						p.advance()
+					}
+					return p.directiveSpan(KindMacroInvocation, first.Start.Offset, end, first.LeadingTrivia, last.TrailingTrivia)
+				}
+				break
+			}
+		}
+	}
+	return p.parseTernary()
 }

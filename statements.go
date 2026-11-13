@@ -49,6 +49,11 @@ func (p *parser[N, S]) parseStatement() N {
 		}
 		return p.parseSingleDirective()
 	default:
+		if end, ok := p.conditionalMacroEnds[p.cur().Start.Offset]; ok {
+			if conditional := p.parseConditionalMacro(end); conditional != p.sink.Nil() {
+				return conditional
+			}
+		}
 		if p.inlineOperatorMacroBlockStart() {
 			return p.parseInlineOperatorMacroBlock()
 		}
@@ -62,6 +67,35 @@ func (p *parser[N, S]) parseStatement() N {
 			return p.parseMacroInvocationBlock()
 		}
 		return p.parseExpressionStatement()
+	}
+}
+
+func (p *parser[N, S]) parseConditionalMacro(end int) N {
+	first := p.cur()
+	for i := 1; ; i++ {
+		last := p.peek(i)
+		if last.Kind == token.EOF || last.End.Offset > end {
+			return p.sink.Nil()
+		}
+		if last.End.Offset != end {
+			continue
+		}
+		for range i + 1 {
+			p.advance()
+		}
+		header := p.directiveSpan(KindMacroInvocation, first.Start.Offset, end, first.LeadingTrivia, last.TrailingTrivia)
+		body := p.parseControlledStatement()
+		node := p.sink.NewNode(KindMacroInvocationBlock, header, body)
+		p.sink.SetField(node, fieldCondition, header)
+		p.sink.SetField(node, fieldConsequence, body)
+		p.sink.SetField(node, fieldBody, body)
+		if p.at(token.KwElse) {
+			p.advance()
+			alternative := p.parseControlledStatement()
+			p.sink.SetField(node, fieldAlternative, alternative)
+			p.sink.AddChild(node, alternative)
+		}
+		return node
 	}
 }
 

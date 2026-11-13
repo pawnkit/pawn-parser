@@ -120,27 +120,16 @@ func (p *parser[N, S]) parseEnumDeclaration(quals []N) N {
 		p.sink.AddChild(node, q)
 	}
 
+	// An explicit tag precedes the optional enum name, as in enum _:Size.
+	tag := p.parseOptionalTagPrefix()
+	if tag != p.sink.Nil() {
+		p.sink.SetField(node, fieldTag, tag)
+		p.sink.AddChild(node, tag)
+	}
 	if p.at(token.Identifier) {
 		name := p.parseQualifiedIdentifier()
 		p.sink.SetField(node, fieldName, name)
 		p.sink.AddChild(node, name)
-	}
-
-	var tag N
-	switch {
-	case p.at(token.Colon) && p.peekKind(1) == token.LBrace:
-		colon := p.advance()
-		tag = p.directiveSpan(KindTaggedType, colon.Start.Offset, colon.End.Offset, colon.LeadingTrivia, colon.TrailingTrivia)
-	case p.at(token.Colon) && p.peekKind(1) == token.Identifier:
-		colon := p.advance()
-		tag = p.sink.NewLeaf(KindTaggedType, p.advance())
-		p.sink.SetStart(tag, colon.Start.Offset)
-	default:
-		tag = p.parseOptionalTagPrefix()
-	}
-	if tag != p.sink.Nil() {
-		p.sink.SetField(node, fieldTag, tag)
-		p.sink.AddChild(node, tag)
 	}
 
 	if increment := p.parseEnumIncrementClause(); increment != p.sink.Nil() {
